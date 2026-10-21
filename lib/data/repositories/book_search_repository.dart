@@ -34,6 +34,7 @@ abstract class BookSearchRepository {
     String query, {
     String filter = 'title',
     int maxResults = 20,
+    int? startIndex,
   });
 
   /// Ambil buku acak (untuk shake to discover).

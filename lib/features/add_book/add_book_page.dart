@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/services/sensor_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
@@ -32,6 +33,7 @@ class AddBookPage extends StatefulWidget {
 class _AddBookPageState extends State<AddBookPage> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
+  StreamSubscription<void>? _shakeSubscription;
 
   SearchFilterType _selectedFilter = SearchFilterType.title;
   bool _isLoading = false;
@@ -40,10 +42,33 @@ class _AddBookPageState extends State<AddBookPage> {
   bool _hasSearched = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Shake via sensors_plus — PRD §10.3: langganan hanya saat Add Book aktif.
+    _startShakeListener();
+  }
+
+  @override
   void dispose() {
+    _stopShakeListener();
     _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Mulai mendengarkan shake — PRD §10.3.
+  void _startShakeListener() {
+    SensorService.instance.startListening();
+    _shakeSubscription = SensorService.instance.shakeStream.listen((_) {
+      if (mounted) _pickRandomBook();
+    });
+  }
+
+  /// Hentikan pendengaran shake saat keluar halaman — PRD §10.3.
+  void _stopShakeListener() {
+    _shakeSubscription?.cancel();
+    _shakeSubscription = null;
+    SensorService.instance.stopListening();
   }
 
   void _onSearchChanged(String query) {
@@ -103,7 +128,7 @@ class _AddBookPageState extends State<AddBookPage> {
       } else {
         AppSnackBar.show(
           context,
-          message: 'Buku demo tidak tersedia saat ini.',
+          message: 'Tidak ada buku ditemukan. Coba lagi.',
           type: SnackBarType.warning,
         );
       }
@@ -111,7 +136,7 @@ class _AddBookPageState extends State<AddBookPage> {
       if (!mounted) return;
       AppSnackBar.show(
         context,
-        message: 'Gagal memilih buku acak.',
+        message: 'Gagal memilih buku acak. Periksa koneksi Anda.',
         type: SnackBarType.error,
       );
     }
@@ -141,12 +166,7 @@ class _AddBookPageState extends State<AddBookPage> {
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: AppSpacing.l),
-            child: Center(child: DemoModeChip()),
-          ),
-        ],
+        // DemoModeChip dihapus — Fase B3.
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -190,7 +210,7 @@ class _AddBookPageState extends State<AddBookPage> {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.s),
-                // Shake to discover button (Buku acak demo)
+                // Shake to discover button (aksesibilitas/emulator) — PRD §7.3
                 Material(
                   color: isDark ? AppColors.surfaceDark : AppColors.sageGreen.withValues(alpha: 0.25),
                   shape: RoundedRectangleBorder(

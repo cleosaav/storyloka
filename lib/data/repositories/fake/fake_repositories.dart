@@ -344,6 +344,7 @@ class FakeBookSearchRepository implements BookSearchRepository {
     String query, {
     String filter = 'title',
     int maxResults = 20,
+    int? startIndex,
   }) async {
     await _simulateLatency(null, demoControls: demoControls);
     if (demoControls?.isDataEmpty == true) return [];

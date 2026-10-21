@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/biometric_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
@@ -9,7 +10,7 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/demo_widgets.dart';
 import 'auth_controller.dart';
 
-/// Halaman Lock Screen (Biometrik) — PRD §7.1 & §13.0 Fase A1.
+/// Halaman Lock Screen (Biometrik) — PRD §7.1 & §13.0 Fase A1 / B2.
 /// Muncul jika pengguna memiliki session aktif dan fitur biometrik diaktifkan.
 class LockScreenPage extends StatefulWidget {
   const LockScreenPage({super.key});
@@ -24,6 +25,7 @@ class _LockScreenPageState extends State<LockScreenPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAutoBypass();
+      _promptBiometric();
     });
   }
 
@@ -31,6 +33,24 @@ class _LockScreenPageState extends State<LockScreenPage> {
     final demo = context.read<DemoControls>();
     if (demo.bypassBiometric) {
       _handleUnlock();
+    }
+  }
+
+  Future<void> _promptBiometric() async {
+    final demo = context.read<DemoControls>();
+    if (demo.bypassBiometric) return;
+
+    final bioService = context.read<BiometricService?>();
+    if (bioService == null) return;
+
+    final canAuth = await bioService.canAuthenticate();
+    if (canAuth) {
+      final success = await bioService.authenticate(
+        localizedReason: 'Sentuh sensor biometrik untuk melanjutkan membaca di StoryLoka',
+      );
+      if (success && mounted) {
+        _handleUnlock();
+      }
     }
   }
 
@@ -79,24 +99,27 @@ class _LockScreenPageState extends State<LockScreenPage> {
               const Spacer(),
 
               // Lingkaran Avatar / Icon Kunci
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.surfaceDark
-                      : AppColors.softApricot.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.softApricot,
-                    width: 2,
+              GestureDetector(
+                onTap: _promptBiometric,
+                child: Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.surfaceDark
+                        : AppColors.softApricot.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppColors.softApricot,
+                      width: 2,
+                    ),
                   ),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.fingerprint_rounded,
-                    size: 48,
-                    color: primaryColor,
+                  child: Center(
+                    child: Icon(
+                      Icons.fingerprint_rounded,
+                      size: 48,
+                      color: primaryColor,
+                    ),
                   ),
                 ),
               ),
@@ -148,7 +171,9 @@ class _LockScreenPageState extends State<LockScreenPage> {
                 child: SecondaryButton(
                   label: 'Coba Lagi',
                   icon: Icons.refresh_rounded,
-                  onPressed: _handleUnlock,
+                  onPressed: () async {
+                    await _promptBiometric();
+                  },
                 ),
               ),
               const SizedBox(height: AppSpacing.l),

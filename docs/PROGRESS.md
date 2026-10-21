@@ -7,8 +7,8 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 ## Ringkasan Progres
 
 - **Tahap saat ini:** Tahap B (Backend dan Integrasi)
-- **Fase terakhir selesai:** Fase B1 — Penyimpanan Lokal (SQLite)
-- **Fase selanjutnya:** Fase B2 — Autentikasi dan Supabase
+- **Fase terakhir selesai:** Fase B3 — Google Books, Scan Barcode, Shake
+- **Fase selanjutnya:** Fase B4 — Integrasi Lanjutan
 
 ---
 
@@ -447,5 +447,118 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
   - ✅ Data bertahan setelah aplikasi ditutup dan dibuka kembali.
   - ✅ Seluruh 86 tes Tahap A tetap 100% lolos.
 
+---
+
+### Fase B2 — Autentikasi dan Supabase (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Instalasi Paket:** `supabase_flutter`, `flutter_dotenv`, `local_auth`.
+  - **Konfigurasi Environment ([`env.dart`](file:///c:/StoryLoka/lib/core/config/env.dart)):**
+    - Satu-satunya titik akses `.env` — PRD §3.
+    - Getter: `supabaseUrl`, `supabaseAnonKey`, `geminiApiKey`, `geminiModel`, `googleBooksApiKey`.
+    - `isSupabaseConfigured`: cek kelengkapan URL + Key, mencegah crash bila `.env` kosong.
+    - `setMockValues()` untuk override di unit test.
+  - **Config Error Page ([`config_error_page.dart`](file:///c:/StoryLoka/lib/core/widgets/config_error_page.dart)):**
+    - Layar error ramah pengguna jika `.env` kosong atau tidak lengkap, bukan crash.
+    - Menampilkan pesan konfigurasi yang diperlukan dan instruksi pengisian.
+  - **Inisialisasi Supabase ([`main.dart`](file:///c:/StoryLoka/lib/main.dart)):**
+    - `Env.load()` → cek `Env.isSupabaseConfigured` → `Supabase.initialize(publishableKey:)`.
+    - Graceful fallback: jika `.env` tidak lengkap, aplikasi tetap berjalan dalam mode demo.
+  - **SupabaseAuthRepository ([`supabase_repositories.dart`](file:///c:/StoryLoka/lib/data/repositories/supabase/supabase_repositories.dart)):**
+    - **Tanpa `supabase.auth`** — sesuai aturan AGENTS.md.
+    - Menggunakan RPC PostgreSQL: `register_user`, `login_user`, `validate_session`, `logout_session`.
+    - Pemetaan error ke pesan bahasa Indonesia:
+      - `EMAIL_TAKEN` → "Email sudah terdaftar. Silakan gunakan email lain."
+      - `INVALID_CREDENTIALS` → "Email atau password salah."
+      - `SESSION_INVALID` → "Sesi tidak valid. Silakan login ulang."
+    - Password dan token **tidak pernah dicetak ke log**.
+  - **SupabaseProfileRepository:**
+    - Menggunakan RPC `update_profile` untuk memperbarui nama dan bio pengguna.
+    - Error handling konsisten dengan pesan bahasa Indonesia.
+  - **BiometricService ([`biometric_service.dart`](file:///c:/StoryLoka/lib/core/services/biometric_service.dart)):**
+    - Menggunakan paket `local_auth` nyata.
+    - Cek ketersediaan biometrik (`canCheckBiometrics` + `isDeviceSupported`).
+    - Prompt autentikasi dengan `localizedReason` bahasa Indonesia.
+  - **Android Configuration:**
+    - `MainActivity.kt` → `FlutterFragmentActivity` (wajib untuk `local_auth`).
+    - Permissions: `USE_BIOMETRIC`, `INTERNET` di `AndroidManifest.xml`.
+  - **Integrasi Provider ([`providers.dart`](file:///c:/StoryLoka/lib/app/providers.dart)):**
+    - `SupabaseAuthRepository`, `SupabaseProfileRepository`, dan `BiometricService` terdaftar di registry provider saat `useFakeData = false`.
+  - **Keamanan:**
+    - `.env` terdaftar di `.gitignore`.
+    - `.env.example` sebagai template referensi tanpa nilai rahasia.
+    - `supabase/schema.sql` menyertakan skema SQL Lampiran A untuk referensi setup.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **94/94 tests passed** (100% lolos di seluruh test suite proyek; tidak ada regresi).
+- **DoD B2 Terpenuhi:**
+  - ✅ `supabase_flutter`, `flutter_dotenv`, `local_auth` terpasang dan terintegrasi.
+  - ✅ `Env` sebagai single-source-of-truth akses `.env`; `.env` kosong → layar error konfigurasi, bukan crash.
+  - ✅ `SupabaseAuthRepository` menggunakan RPC custom tanpa `supabase.auth`.
+  - ✅ Error `EMAIL_TAKEN`, `INVALID_CREDENTIALS`, `SESSION_INVALID` dipetakan ke pesan Indonesia.
+  - ✅ `BiometricService` nyata dengan `local_auth` + `FlutterFragmentActivity`.
+  - ✅ Password dan token tidak dicetak ke log.
+  - ✅ `flutter analyze` 0 issue dan seluruh 94 tes lolos.
+
+---
+
+### Fase B3 — Google Books, Scan Barcode, Shake (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Instalasi Paket:** `mobile_scanner: ^7.4.2`, `sensors_plus: ^7.1.1`, `http: ^1.6.0`.
+  - **GoogleBooksRepository ([`google_books_repository.dart`](file:///c:/StoryLoka/lib/data/repositories/remote/google_books_repository.dart) — PRD §9.1):**
+    - Endpoint: `GET https://www.googleapis.com/books/v1/volumes`.
+    - Parameter `q`: `intitle:` / `inauthor:` / `isbn:` sesuai filter. Encode URL otomatis.
+    - `key` opsional dari `Env.googleBooksApiKey` (kosong = tanpa key).
+    - Mapping field persis PRD §9.1:
+      - `google_books_id` ← `id`
+      - `title` ← `volumeInfo.title`
+      - `authors` ← `volumeInfo.authors` digabung `", "` (kosong → "Penulis tidak diketahui")
+      - `genre` ← `volumeInfo.categories[0]`
+      - `synopsis` ← `volumeInfo.description` (strip tag HTML + decode entities)
+      - `page_count` ← `volumeInfo.pageCount` (0/null → null)
+      - `cover_url` ← `volumeInfo.imageLinks.thumbnail` (ubah `http://` → `https://`)
+      - `isbn` ← `industryIdentifiers` (utamakan `ISBN_13`, fallback `ISBN_10`)
+      - `publisher` ← `volumeInfo.publisher`
+      - `price_amount/currency` ← `saleInfo.retailPrice` atau `saleInfo.listPrice` (jika tidak ada → null)
+    - Error handling:
+      - Timeout 15 detik → pesan "Koneksi ke server buku gagal (timeout 15 detik)."
+      - Status non-200 → pesan dengan kode status.
+      - `items` null/kosong → return list kosong (empty state).
+    - `randomBook()`: kata kunci acak dari 10 subjek, `startIndex` acak 0–30, pilih hasil acak yang punya judul.
+  - **ScanPage nyata ([`scan_page.dart`](file:///c:/StoryLoka/lib/features/add_book/scan_page.dart) — PRD §7.3):**
+    - Scan barcode nyata via `mobile_scanner` (format EAN-13 saja, awalan 978/979).
+    - Izin kamera ditolak → penjelasan + fallback input ISBN manual.
+    - Kamera error / tidak tersedia → pesan + fallback input manual.
+    - Setelah barcode terbaca → cari `isbn:{kode}` → buka detail jika ditemukan, "ISBN tidak ditemukan" jika tidak.
+  - **SensorService ([`sensor_service.dart`](file:///c:/StoryLoka/lib/core/services/sensor_service.dart) — PRD §10.3):**
+    - `Stream<void> shakeStream` dari `sensors_plus` (`userAccelerometerEventStream()`).
+    - Deteksi: magnitudo `sqrt(x²+y²+z²) > 25 m/s²`, debounce 1.5 detik.
+    - Getaran haptic (`HapticFeedback.mediumImpact`) saat shake terdeteksi.
+    - Sensor tidak tersedia (desktop/emulator) → diam tanpa error.
+  - **AddBookPage diperbarui ([`add_book_page.dart`](file:///c:/StoryLoka/lib/features/add_book/add_book_page.dart)):**
+    - **Chip "Mode demo" dihapus** dari AppBar.
+    - Shake listener aktif hanya saat halaman Add Book tampil (`initState` → `startListening`, `dispose` → `stopListening`).
+    - Tombol ikon shake tetap tersedia sebagai alternatif aksesibilitas/emulator.
+  - **Android Configuration:**
+    - Permission `CAMERA` ditambahkan di `AndroidManifest.xml`.
+  - **Provider Wiring ([`providers.dart`](file:///c:/StoryLoka/lib/app/providers.dart)):**
+    - Path `useFakeData=false` menggunakan `GoogleBooksRepository` nyata.
+    - Path `useFakeData=true` tetap menggunakan `FakeBookSearchRepository`.
+  - **Interface Update:**
+    - `BookSearchRepository.search()` menerima parameter opsional `startIndex`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_b3_test.dart`: **10/10 tests passed** (GoogleBooks mapping, timeout, non-200, empty items, ISBN normalize, HTML strip, cover https, saleInfo, SensorService singleton & stream).
+  - `flutter test`: **104/104 tests passed** (100% lolos; tidak ada regresi).
+- **DoD B3 Terpenuhi:**
+  - ✅ `GoogleBooksRepository` dengan mapping field persis PRD §9.1.
+  - ✅ Cover `http://` → `https://`, sinopsis strip HTML, harga hanya dari `saleInfo`.
+  - ✅ Timeout 15 detik, status non-200, dan `items` kosong ditangani.
+  - ✅ Scan barcode nyata via `mobile_scanner` + fallback input ISBN manual.
+  - ✅ Izin kamera ditolak → penjelasan + input manual.
+  - ✅ Shake via `sensors_plus` aktif hanya di halaman Add Book.
+  - ✅ Chip "Mode demo" dihapus dari Add Book.
+  - ✅ `flutter analyze` 0 issue dan seluruh 104 tes lolos.
 
 

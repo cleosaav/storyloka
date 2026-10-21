@@ -15,10 +15,15 @@ import '../data/repositories/ledger_repository.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/profile_repository.dart';
 import '../data/repositories/reading_repository.dart';
+import '../data/repositories/remote/google_books_repository.dart';
 import '../data/repositories/score_repository.dart';
 import '../features/auth/auth_controller.dart';
+import '../core/config/env.dart';
+import '../core/services/biometric_service.dart';
 import '../data/database_helper.dart';
 import '../data/repositories/local/local_repositories.dart';
+import '../data/repositories/supabase/supabase_repositories.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Konfigurasi aplikasi — PRD §13.0 aturan 3.
 class AppConfig {
@@ -59,16 +64,26 @@ class ThemeController extends ChangeNotifier {
 List<SingleChildWidget> buildAppProviders({
   bool? useFakeData,
   DatabaseHelper? dbHelper,
+  AuthRepository? authRepo,
+  ProfileRepository? profileRepo,
+  BiometricService? biometricService,
+  SupabaseClient? supabaseClient,
 }) {
   // Demo controls untuk kDebugMode
   final demoControls = DemoControls();
   final themeController = ThemeController();
   final sessionStore = SecureSessionStore();
+  final bioService = biometricService ?? BiometricService();
   final isFake = useFakeData ?? AppConfig.useFakeData;
 
   if (isFake) {
-    final fakeAuth = FakeAuthRepository(sessionStore: sessionStore);
-    final fakeProfile = FakeProfileRepository(fakeAuth);
+    final fakeAuth = authRepo ?? FakeAuthRepository(sessionStore: sessionStore);
+    final fakeProfile = profileRepo ??
+        FakeProfileRepository(
+          fakeAuth is FakeAuthRepository
+              ? fakeAuth
+              : FakeAuthRepository(sessionStore: sessionStore),
+        );
     final fakeSearch = FakeBookSearchRepository(demoControls: demoControls);
     final fakeLibrary = FakeLibraryRepository(demoControls: demoControls);
     final fakeReading = FakeReadingRepository(demoControls: demoControls);
@@ -86,6 +101,7 @@ List<SingleChildWidget> buildAppProviders({
 
     return [
       Provider<SecureSessionStore>.value(value: sessionStore),
+      Provider<BiometricService>.value(value: bioService),
       ChangeNotifierProvider<ThemeController>.value(value: themeController),
       ChangeNotifierProvider<DemoControls>.value(value: demoControls),
       ChangeNotifierProvider<AuthController>.value(value: authController),
@@ -102,7 +118,7 @@ List<SingleChildWidget> buildAppProviders({
       Provider<CurrencyRepository>.value(value: fakeCurrency),
     ];
   } else {
-    // Fase B1: Implementasi lokal SQLite nyata
+    // Fase B1 & B2: Implementasi nyata (SQLite + Supabase + Biometrik)
     final helper = dbHelper ?? DatabaseHelper.instance;
     final localLibrary = LocalLibraryRepository(
       dbHelper: helper,
@@ -129,26 +145,45 @@ List<SingleChildWidget> buildAppProviders({
       sessionStore: sessionStore,
     );
 
-    // Repository yang baru diimplementasikan di fase berikutnya (B2, B3, B5)
-    final authRepo = FakeAuthRepository(sessionStore: sessionStore);
-    final profileRepo = FakeProfileRepository(authRepo);
-    final searchRepo = FakeBookSearchRepository(demoControls: demoControls);
+    // Fase B2: Supabase Auth & Profile Repository nyata
+    final realAuth = authRepo ??
+        (Env.isSupabaseConfigured
+            ? SupabaseAuthRepository(
+                client: supabaseClient,
+                sessionStore: sessionStore,
+              )
+            : FakeAuthRepository(sessionStore: sessionStore));
+    final realProfile = profileRepo ??
+        (Env.isSupabaseConfigured
+            ? SupabaseProfileRepository(
+                client: supabaseClient,
+                sessionStore: sessionStore,
+              )
+            : FakeProfileRepository(
+                realAuth is FakeAuthRepository
+                    ? realAuth
+                    : FakeAuthRepository(sessionStore: sessionStore),
+              ));
+
+    // Fase B3: Google Books API nyata sebagai BookSearchRepository
+    final searchRepo = GoogleBooksRepository();
     final currencyRepo = FakeCurrencyRepository(demoControls: demoControls);
 
     final authController = AuthController(
-      authRepository: authRepo,
+      authRepository: realAuth,
       sessionStore: sessionStore,
       demoControls: demoControls,
     );
 
     return [
       Provider<SecureSessionStore>.value(value: sessionStore),
+      Provider<BiometricService>.value(value: bioService),
       ChangeNotifierProvider<ThemeController>.value(value: themeController),
       ChangeNotifierProvider<DemoControls>.value(value: demoControls),
       ChangeNotifierProvider<AuthController>.value(value: authController),
       Provider<DatabaseHelper>.value(value: helper),
-      Provider<AuthRepository>.value(value: authRepo),
-      Provider<ProfileRepository>.value(value: profileRepo),
+      Provider<AuthRepository>.value(value: realAuth),
+      Provider<ProfileRepository>.value(value: realProfile),
       Provider<BookSearchRepository>.value(value: searchRepo),
       Provider<LibraryRepository>.value(value: localLibrary),
       Provider<ReadingRepository>.value(value: localReading),

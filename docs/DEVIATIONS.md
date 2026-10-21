@@ -101,7 +101,35 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
 3. **Kompresi dan Sumber Gambar Edit Profil (PRD §7.8)**
    - **Keputusan:** `ImagePicker` dikonfigurasi dengan batas resolusi `maxWidth: 800, maxHeight: 800` dan `imageQuality: 85`, serta menyediakan pilihan sumber Kamera dan Galeri.
    - **Alasan:** Mematuhi spesifikasi kompresi foto profil ≤ 800 px pada PRD §7.8 untuk efisiensi penyimpanan lokal dan unggahan storage mendatang.
+---
 
+## Fase B2 — Integrasi Backend Supabase & Keamanan
 
+1. **Autentikasi Mandiri via Database RPC (PRD §8.2, Lampiran A)**
+   - **Keputusan:** Menggunakan fungsi RPC PostgreSQL (`register_user`, `login_user`, `validate_session`, `logout_session`, `update_profile`) melalui client Supabase publik tanpa modul `supabase.auth` dan tanpa Firebase.
+   - **Alasan:** Sesuai batasan eksplisit PRD §0 dan instruksi prompt agar mekanisme autentikasi dan session token sepenuhnya dikendalikan via database RPC custom.
 
+2. **Akses Terpusat dan Aman Konfigurasi (.env) via `Env`**
+   - **Keputusan:** Seluruh akses kunci lingkungan diarahkan hanya melalui `lib/core/config/env.dart`. Jika konfigurasi Supabase tidak lengkap, aplikasi menyajikan layar error konfigurasi alih-alih crash.
+   - **Alasan:** Menjamin kepatuhan prinsip keamanan zero-hardcode-secrets dan stabilitas aplikasi.
+
+3. **Biometrik Nyata dengan `FlutterFragmentActivity`**
+   - **Keputusan:** Mengganti `FlutterActivity` dengan `FlutterFragmentActivity` di `MainActivity.kt` Android serta memanfaatkan `local_auth` dan `flutter_secure_storage`.
+   - **Alasan:** Prasyarat resmi Android biometric prompt agar dialog autentikasi biometrik dapat dipanggil tanpa exception `IllegalStateException`.
+
+---
+
+## Fase B3 — Google Books API & Sensor Akselerometer
+
+1. **Normalisasi ISBN dan Sanitasi HTML Sinopsis (PRD §9.1)**
+   - **Keputusan:** Seluruh pencarian berfilter ISBN otomatis membersihkan tanda hubung (`-`) dan spasi sebelum dikirimkan ke Google Books API (`isbn:<digits>`). Sinopsis dari Google Books disanitasi menggunakan regex penghapus tag HTML dan decode entitas dasar (`&quot;`, `&#39;`, `&amp;`, `&lt;`, `&gt;`).
+   - **Alasan:** Format query Google Books API mensyaratkan ISBN bersih dari tanda baca agar hasil pencarian presisi, dan tampilan sinopsis di aplikasi harus bersih dari markup HTML mentah.
+
+2. **Dukungan Filter Subjek pada `BookSearchRepository.search()` dan `randomBook()` (PRD §7.3, §9.1)**
+   - **Keputusan:** Menambahkan penanganan `filter: 'subject'` (`subject:<query>`) pada `GoogleBooksRepository` yang digunakan oleh `randomBook()` untuk fitur Shake to Discover.
+   - **Alasan:** Mematuhi deskripsi PRD §7.3 bahwa guncangan memicu query acak ke Google Books API dari daftar subjek (fiction, fantasy, romance, history, dll.) dengan `startIndex` acak (0–30).
+
+3. **Aksesibilitas Tombol Shake di Add Book Page**
+   - **Keputusan:** Di samping guncangan fisik akselerometer melalui `SensorService`, tombol icon shake tetap dipertahankan pada header search bar Add Book Page.
+   - **Alasan:** Memastikan fitur penemuan buku acak tetap dapat digunakan oleh pengguna dengan keterbatasan mobilitas (aksesibilitas) serta mempermudah pengujian di emulator/desktop yang tidak memiliki sensor fisik akselerometer.
 

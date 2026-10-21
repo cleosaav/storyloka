@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/providers.dart';
+import '../../core/services/biometric_service.dart';
 import '../../core/services/secure_session_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -564,6 +565,35 @@ class _ProfilePageState extends State<ProfilePage> {
                           : AppColors.deepTeal,
                       value: isBioEnabled,
                       onChanged: (val) async {
+                        if (val) {
+                          final bioService = context.read<BiometricService?>();
+                          final canAuth = await bioService?.canAuthenticate() ?? false;
+                          if (!canAuth) {
+                            if (context.mounted) {
+                              AppSnackBar.show(
+                                context,
+                                message: 'Sensor biometrik tidak tersedia atau belum terdaftar di perangkat.',
+                                type: SnackBarType.warning,
+                              );
+                            }
+                            return;
+                          }
+                          final ok = await bioService?.authenticate(
+                                localizedReason:
+                                    'Konfirmasi biometrik untuk mengaktifkan kunci aplikasi',
+                              ) ??
+                              false;
+                          if (!ok) {
+                            if (context.mounted) {
+                              AppSnackBar.show(
+                                context,
+                                message: 'Verifikasi biometrik dibatalkan atau tidak cocok.',
+                                type: SnackBarType.error,
+                              );
+                            }
+                            return;
+                          }
+                        }
                         await authController.setBiometricEnabled(val);
                         setState(() {});
                       },
