@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/services/notification_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
@@ -49,6 +50,7 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
   @override
   void dispose() {
     _ticker?.cancel();
+    NotificationService.instance.cancelStopwatchNotification();
     super.dispose();
   }
 
@@ -109,10 +111,16 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
 
   void _startTimer() {
     if (_isRunning) return;
+    final now = DateTime.now();
     setState(() {
       _isRunning = true;
-      _startTimestamp = DateTime.now();
+      _startTimestamp = now;
     });
+
+    NotificationService.instance.showStopwatchNotification(
+      bookTitle: _book?.title ?? 'Buku',
+      startTime: now,
+    );
 
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (mounted) {
@@ -125,6 +133,7 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
     if (!_isRunning) return;
     final now = DateTime.now();
     _ticker?.cancel();
+    NotificationService.instance.cancelStopwatchNotification();
     setState(() {
       _isRunning = false;
       if (_startTimestamp != null) {
@@ -151,6 +160,7 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
 
   Future<void> _finishReading() async {
     _pauseTimer();
+    NotificationService.instance.cancelStopwatchNotification();
     final elapsed = _currentElapsed;
     final durationSeconds = elapsed.inSeconds;
 

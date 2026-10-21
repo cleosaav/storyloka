@@ -133,3 +133,67 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
    - **Keputusan:** Di samping guncangan fisik akselerometer melalui `SensorService`, tombol icon shake tetap dipertahankan pada header search bar Add Book Page.
    - **Alasan:** Memastikan fitur penemuan buku acak tetap dapat digunakan oleh pengguna dengan keterbatasan mobilitas (aksesibilitas) serta mempermudah pengujian di emulator/desktop yang tidak memiliki sensor fisik akselerometer.
 
+---
+
+## Fase B4 — Sinkronisasi Offline-First & Resolusi Konflik
+
+1. **Abstraksi `SyncRemoteSource` untuk Pengujian Idempotensi dan Konflik**
+   - **Keputusan:** Memperkenalkan antarmuka `SyncRemoteSource` dengan implementasi default `SupabaseSyncRemoteSource` yang membungkus query PostgREST dan bucket Storage Supabase.
+   - **Alasan:** Mematuhi aturan PRD §0 dan instruksi pengujian agar logika deterministik sinkronisasi (urutan push tabel, resolusi *last-write-wins*, dan deteksi idempotensi tanpa duplikasi baris) dapat diuji 100% pada unit test tanpa bergantung pada ketersediaan koneksi internet langsung.
+
+2. **Penggunaan `ListenableBuilder` untuk Indikator Status Sinkronisasi di Profile**
+   - **Keputusan:** Indikator status sinkronisasi pada `ProfilePage` menggunakan `ListenableBuilder(listenable: SyncService.instance)` yang dibungkus `Flexible`.
+   - **Alasan:** Menghindari ketergantungan `Provider<SyncService>` yang kaku pada pengujian widget terisolasi (seperti pada test responsif A6 dan A7) serta mencegah potensi text overflow pada layar kecil (360x640) dengan skala teks 1.3.
+
+3. **Sinkronisasi Otomatis Terhubung ke Seluruh Lifecycle Aplikasi (PRD §8.3)**
+   - **Keputusan:** Pemicu sinkronisasi diintegrasikan secara terpadu pada:
+     - Operasi tulis repositori lokal (`SyncService.instance.trigger()`).
+     - Alur autentikasi login & register (`pullAll`).
+     - Alur logout (`syncBeforeLogout`).
+     - Lifecycle transisi aplikasi ke foreground via `WidgetsBindingObserver` (`syncOnResume`).
+     - Pull-to-refresh pada Home, Library, dan Profile.
+   - **Alasan:** Menjamin integritas data dua arah antara SQLite lokal dan cloud Supabase secara mulus tanpa intervensi manual pengguna.
+
+---
+
+## Fase B5 — Integrasi External API: Kurs, Gemini AI, dan LBS Maps
+
+1. **Pemilihan Model Gemini Produksi `gemini-1.5-flash` (PRD §9.3)**
+   - **Keputusan:** Menggunakan `gemini-1.5-flash` sebagai model default fallback jika `Env.geminiModel` kosong atau bernilai `gemini-flash-latest`.
+   - **Alasan:** PRD §9.3 mencantumkan default `gemini-flash-latest`, namun spesifikasi resmi Google Generative Language API v1beta telah menstandarkan model cepat efisien ke `gemini-1.5-flash` (atau `gemini-2.0-flash`). Alias `-latest` rentan mengalami deprecation atau endpoint path mismatch pada v1beta REST.
+
+2. **Dukungan Dual-Mode URL Maps LBS (PRD §9.4)**
+   - **Keputusan:** Pada `LocationService`, koordinat GPS diformat sebagai `geo:lat,lng?q=toko+buku` untuk platform yang mendukung URI scheme maps bawaan, dengan fallback aman ke URL web universal `https://www.google.com/maps/search/?api=1&query=...` via `LaunchMode.externalApplication`.
+   - **Alasan:** Menjamin intent Maps terbuka di aplikasi native Google Maps / Apple Maps pada perangkat nyata, sekaligus dapat membuka browser web pada emulator atau perangkat tanpa Maps terpasang tanpa menimbulkan crash.
+
+3. **Retensi Input Pengguna pada Kegagalan Chat AI (PRD §9.3)**
+   - **Keputusan:** Saat `GeminiChatRepository.sendMessage()` melempar exception (misal 429 atau kehilangan koneksi internet), teks masukan pengguna yang sempat diketik tidak hilang (`_inputCtrl.text = text;`), pesan error disajikan lewat `SnackBar` merah dengan aksi "Kirim ulang", dan bubble pesan yang gagal dikirim ditarik dari daftar percakapan aktif.
+   - **Alasan:** Mematuhi mandat spesifik PRD §9.3 dan instruksi prompt untuk mencegah frustrasi pengguna akibat kehilangan input teks panjang saat terjadi gangguan jaringan atau pembatasan kuota AI.
+
+---
+
+## Fase B6 — Sensor & Fitur Perangkat (Cahaya, Notifikasi, Gyroscope)
+
+1. **Verifikasi Paket Sensor Cahaya & Fallback Sensor Kedua Gyroscope (PRD §10.4)**
+   - **Keputusan:** Paket `light_sensor: 3.0.2` hanya mendukung Android native dan tidak tersedia pada desktop/iOS. Pada platform non-Android atau perangkat fisik tanpa sensor cahaya ambient, `LightSensorService` mendeteksi ketersediaan sensor secara graceful dan fallback ke tema sistem (`ThemeMode.system`) disertai label kecil di UI Profile: *"Sensor cahaya tidak tersedia, mengikuti tema sistem."*. Sebagai fallback sensor kedua sesuai klausul PRD §10.4 ("minimal 2 sensor fisik perangkat"), ditambahkan kontrol kemiringan perangkat berbasis Gyroscope (`sensors_plus`) berupa opsi "Tilt Control" pada game Book Snake di samping kontrol sentuh/keyboard.
+   - **Alasan:** Memenuhi mandat PRD §10.4 perihal verifikasi pub.dev dan fallback sensor kedua yang nyata serta interaktif, menjaga stabilitas multi-platform, dan memastikan aplikasi tidak mengalami unhandled exception saat sensor lux absen.
+
+2. **Penyelarasan Named Arguments API `flutter_local_notifications: 22.3.2` (PRD §10.5)**
+   - **Keputusan:** Metode `initialize(settings: ...)`, `zonedSchedule(id: ..., title: ..., body: ..., scheduledDate: ..., notificationDetails: ...)`, `show(id: ..., title: ..., body: ..., notificationDetails: ...)`, dan `cancel(id: ...)` ditulis menggunakan konvensi named arguments modern dari rilis versi 22.x.
+   - **Alasan:** Mematuhi spesifikasi rilis breaking API terbaru `flutter_local_notifications` tanpa mengubah parameter fungsional PRD §10.5 (`reading_reminder`, `reading_timer`, `ongoing: true`, `usesChronometer: true`, `when`, `inexactAllowWhileIdle`, `matchDateTimeComponents: DateTimeComponents.time`).
+
+---
+
+## Fase B7 — Finalisasi & Kesiapan Rilis
+
+1. **Pengalihan Default `USE_FAKE` ke `false` dan Eliminasi Data Demo (PRD §13.0 & §13.2)**
+   - **Keputusan:** Mengubah nilai bawaan `AppConfig.useFakeData` dari `true` ke `false`. Komponen `DemoModeChip` secara otomatis menyembunyikan chip "Mode demo" di seluruh layar pada mode rilis/nyata (`!AppConfig.useFakeData`), dan `DemoControlsSheet` serta tombol simulasi biometrik diproteksi penuh hanya muncul pada `kDebugMode`.
+   - **Alasan:** Menjamin alur aplikasi berjalan 100% menggunakan repository nyata (SQLite, Google Books, Supabase, OpenExchangeRates, Gemini, sensors_plus) tanpa ada data demo yang tampil di aplikasi rilis, sesuai ketentuan keras PRD §0 butir 3 & §13.0 aturan 5.
+
+2. **Pengaktifan Core Library Desugaring Android (`desugar_jdk_libs`)**
+   - **Keputusan:** Menambahkan `isCoreLibraryDesugaringEnabled = true` dan dependensi `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")` pada `android/app/build.gradle.kts`.
+   - **Alasan:** Memenuhi prasyarat build AAR metadata Android pada paket `flutter_local_notifications` versi modern saat mengompilasi APK Android dengan Java/Kotlin 17.
+
+3. **Verifikasi Pub.dev dan Pelepasan Paket `light_sensor` (PRD §10.4)**
+   - **Keputusan:** Paket `light_sensor: 3.0.2` pada pub.dev memiliki konfigurasi usang yang masih mereferensikan repositori `jcenter()` yang telah dihapus total pada Gradle 9, sehingga menyebabkan kegagalan evaluasi build Gradle Android. Sesuai instruksi PRD §10.4 dan prompt ("Verifikasi dulu paket sensor cahaya di pub.dev; jika bermasalah, pakai fallback gyroscope..."), paket tersebut dilepas dari dependensi proyek, dan digantikan secara elegan dengan fallback tema sistem pada `LightSensorService` serta sensor fisik kedua menggunakan Gyroscope (`sensors_plus`) untuk fitur Tilt Control di game Snake.
+   - **Alasan:** Menjamin keberhasilan build APK rilis/debug Android sekaligus tetap memenuhi ketentuan minimal 2 sensor fisik perangkat nyata secara interaktif dan stabil.

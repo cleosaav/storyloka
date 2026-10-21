@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/providers.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text.dart';
@@ -58,6 +59,9 @@ class DemoModeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!kDebugMode || !AppConfig.useFakeData) {
+      return const SizedBox.shrink();
+    }
     return GestureDetector(
       onTap: onTap,
       child: Container(

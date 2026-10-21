@@ -561,4 +561,234 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
   - ✅ Chip "Mode demo" dihapus dari Add Book.
   - ✅ `flutter analyze` 0 issue dan seluruh 104 tes lolos.
 
+---
 
+### Fase B4 — Sinkronisasi Offline-First & Resolusi Konflik (PRD §8.3)
+- **Status:** SELESAI
+- **Komponen Utama:**
+  - **SyncService ([`sync_service.dart`](file:///c:/StoryLoka/lib/core/services/sync_service.dart)):**
+    - **Push Pending (`pushPending`):**
+      - Urutan eksekusi tabel persis PRD §8.3: `user_books` $\rightarrow$ `reading_sessions` $\rightarrow$ `ledger_blocks` $\rightarrow$ `feedbacks` $\rightarrow$ `game_scores`.
+      - Membaca baris SQLite dengan `sync_status = 'pending'`, mengonversi payload (mis. `is_deleted` int $\rightarrow$ boolean, `data_json` string $\rightarrow$ Map JSON).
+      - Mengirim ke remote menggunakan `upsert(onConflict: 'id')`.
+      - Memperbarui status baris SQLite lokal menjadi `'synced'`.
+      - Kegagalan jaringan ditelan dan tidak memblokir aplikasi.
+    - **Pull All (`pullAll`):**
+      - Dipanggil setelah login/register berhasil, serta saat pull-to-refresh di Home, Library, dan Profile.
+      - **Resolusi Konflik Last-Write-Wins (`user_books`):**
+        - Jika `remote.updated_at > local.updated_at`: data lokal ditimpa data remote dan status menjadi `'synced'`.
+        - Jika `local.updated_at >= remote.updated_at`: data lokal dipertahankan (lokal menang).
+      - **Tabel Append-Only:** `reading_sessions`, `feedbacks`, dan `game_scores` di-insert jika belum ada di lokal.
+      - **Ledger Blocks:** di-pull dengan urutan `block_index ASC` dan di-insert jika belum ada di lokal.
+    - **Idempotensi Sinkronisasi:**
+      - Pemanggilan `pullAll` berulang kali tidak menduplikasi baris di tabel SQLite manapun.
+      - Pemanggilan `pushPending` berulang kali tidak mengirim ulang baris yang sudah bertatus `'synced'`.
+    - **Pemicu Sinkronisasi Lain:**
+      - Setelah operasi tulis lokal (`saveBook`, `updateBook`, `deleteBook`, `moveToCollection`, `saveSession`, `saveBlock`, `saveFeedback`, `saveScore`): memanggil `SyncService.instance.trigger()`.
+      - Saat aplikasi kembali aktif ke foreground (`AppLifecycleState.resumed` di `StoryLokaApp`): memanggil `SyncService.instance.syncOnResume()`.
+      - Saat logout: memanggil `SyncService.instance.syncBeforeLogout()` sebelum membersihkan sesi pengguna.
+    - **Upload Avatar (`uploadAvatar`):**
+      - Mengunggah berkas gambar ke Supabase Storage bucket `avatars` dengan nama unik `$userId/avatar_<timestamp>.jpg` dan opsi `upsert: true`.
+    - **Indikator UI:**
+      - Menampilkan status sinkronisasi kecil non-intrusif ("Tersinkron" / "Menyinkronkan..." / "Menunggu sinkron") di kartu pengguna `ProfilePage` menggunakan `ListenableBuilder` dan `Flexible` agar bebas overflow pada berbagai skala teks.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_b4_test.dart`: **6/6 tests passed** (urutan push tabel, konversi soft delete, resolusi konflik remote menang vs lokal menang, idempotensi pullAll berulang, idempotensi pushPending berulang).
+  - `flutter test`: **110/110 tests passed** (100% lolos; tidak ada regresi).
+- **DoD B4 Terpenuhi:**
+  - ✅ `SyncService` dengan urutan push `user_books` $\rightarrow$ `reading_sessions` $\rightarrow$ `ledger_blocks` $\rightarrow$ `feedbacks` $\rightarrow$ `game_scores`.
+  - ✅ `pullAll` terhubung setelah login/register dan pull-to-refresh.
+  - ✅ Sinkronisasi otomatis saat resume dan logout.
+  - ✅ Logika konflik *last-write-wins* berdasarkan `updated_at`.
+  - ✅ Idempotensi sinkronisasi teruji tanpa duplikasi data.
+  - ✅ Upload avatar ke Storage bucket `avatars`.
+  - ✅ Seluruh 110 pengujian otomatis lolos dan `flutter analyze` 0 issue.
+
+---
+
+### Fase B5 — Integrasi External API: Kurs, Gemini AI, dan LBS Maps (PRD §9.2, §9.3, §9.4)
+- **Status:** SELESAI
+- **Komponen Utama:**
+  - **Gemini AI REST Repository ([`gemini_chat_repository.dart`](file:///c:/StoryLoka/lib/data/repositories/remote/gemini_chat_repository.dart)):**
+    - Menggunakan endpoint Google Generative Language REST v1beta: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`.
+    - Mengirim header otentikasi `x-goog-api-key`.
+    - Payload memuat `systemInstruction` persis PRD §9.3 ("Kamu adalah asisten StoryLoka, teman membaca yang ramah...").
+    - Membatasi konteks percakapan ke maksimal **10 pesan terakhir** (`recentHistory`).
+    - Verifikasi model: default dialihkan ke model produksi aktif `gemini-1.5-flash` jika konfigurasi bernilai `gemini-flash-latest` atau kosong.
+    - Pemetaan error ke pesan ramah bahasa Indonesia:
+      - `400` / `403`: `"Konfigurasi AI belum benar."`
+      - `429`: `"Terlalu banyak permintaan, coba lagi sebentar."`
+      - `SocketException`: `"Tidak ada koneksi internet. Periksa jaringan Anda."`
+      - `TimeoutException`: `"Koneksi ke asisten AI timeout. Periksa jaringan Anda."`
+    - Pada `AiChatPage` ([`ai_chat_page.dart`](file:///c:/StoryLoka/lib/features/tools/ai_chat_page.dart)): saat error terjadi, teks input pengguna tidak hilang (`_inputCtrl.text = text;`), bubble gagal ditarik dari list, dan `SnackBar` merah memuat tombol "Kirim ulang".
+  - **Kurs Nyata ([`exchange_rate_repository.dart`](file:///c:/StoryLoka/lib/data/repositories/remote/exchange_rate_repository.dart)):**
+    - Mengambil kurs mata uang live dari `https://open.er-api.com/v6/latest/{BASE}` dengan timeout 15 detik.
+    - Menyimpan kurs ke cache lokal `SharedPreferences` (`exchange_rates_{BASE}`) selama **12 jam**.
+    - Menggunakan getter `isFromCache` pada `CurrencyRepository` ([`currency_repository.dart`](file:///c:/StoryLoka/lib/data/repositories/currency_repository.dart)).
+    - Pada `CurrencyConverterPage` ([`currency_converter_page.dart`](file:///c:/StoryLoka/lib/features/tools/currency_converter_page.dart)):
+      - Jika memakai cache: menampilkan label `"Kurs tersimpan, mungkin tidak terbaru • {tanggal}"`.
+      - Jika kurs live: menampilkan label `"Kurs diperbarui {tanggal}"`.
+      - Fallback offline otomatis mengambil data cache tanpa melempar crash.
+  - **Open Maps LBS Toko Buku Terdekat ([`location_service.dart`](file:///c:/StoryLoka/lib/core/services/location_service.dart)):**
+    - Memanfaatkan paket `geolocator` untuk memperoleh koordinat GPS pengguna (`getCurrentPosition`).
+    - Membuka aplikasi peta via `url_launcher` (`geo:{lat},{lng}?q=toko+buku` dan fallback web `maps.google.com/?q=...`) dengan `LaunchMode.externalApplication`.
+    - Menampilkan dialog edukasi izin lokasi sesuai PRD §9.4 jika izin belum diberikan.
+    - Menangani kondisi izin ditolak / GPS mati: membuka bottom sheet pencarian toko buku manual berdasarkan kota/daerah (`showManualLocationSheet`).
+    - Jika izin ditolak permanen (`LocationPermission.deniedForever`): menampilkan tombol "Buka Pengaturan" yang memicu `openAppSettings()`.
+    - Terhubung di `SearchBookDetailPage` dan `WishlistBookDetailPage`.
+  - **Izin Android ([`AndroidManifest.xml`](file:///c:/StoryLoka/android/app/src/main/AndroidManifest.xml)):**
+    - Ditambahkan permission `ACCESS_FINE_LOCATION` dan `ACCESS_COARSE_LOCATION`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_b5_test.dart`: **9/9 tests passed** (Gemini payload, systemInstruction, max 10 messages, error mapping 400/403/429/timeout/candidates kosong, live exchange rates, 12h cache fallback offline, isFromCache true/false, LocationService query).
+  - `flutter test`: **119/119 tests passed** (100% lolos seluruh test suite tanpa regresi).
+- **DoD B5 Terpenuhi:**
+  - ✅ Gemini REST endpoint v1beta dengan `systemInstruction`, riwayat 10 pesan, dan error handling Indonesia.
+  - ✅ Teks input pengguna tidak hilang saat chat AI gagal + tombol kirim ulang di SnackBar.
+  - ✅ Kurs live dari `open.er-api.com`, cache 12 jam di `SharedPreferences`, dan label status cache.
+  - ✅ Open Maps dengan `geolocator` GPS + bottom sheet fallback kota manual + buka pengaturan jika deniedForever.
+  - ✅ Verifikasi nama model Gemini (`gemini-1.5-flash`) terdokumentasi di `docs/DEVIATIONS.md`.
+  - ✅ `flutter analyze` 0 issue dan 119/119 tes lolos.
+
+---
+
+### Fase B6 — Sensor & Fitur Perangkat (Cahaya, Notifikasi, Gyroscope) (PRD §10.4, §10.5, §12)
+- **Status:** SELESAI
+- **Komponen Utama:**
+  - **NotificationService ([`notification_service.dart`](file:///c:/StoryLoka/lib/core/services/notification_service.dart) — PRD §10.5):**
+    - Dua saluran notifikasi terdaftar:
+      - `reading_reminder`: "Pengingat Membaca", deskripsi ramah, `importance: Importance.high`, `priority: Priority.high`.
+      - `reading_timer`: "Stopwatch Membaca", `ongoing: true`, `usesChronometer: true`, `when: timestamp`.
+    - Penjadwalan harian `scheduleDailyReminder(hour, minute)` via `zonedSchedule`:
+      - `matchDateTimeComponents: DateTimeComponents.time`.
+      - `androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle`.
+      - Judul persis: `"Waktunya membaca"` (tanpa emoji), body: `"Luangkan waktu beberapa menit untuk membaca hari ini."`.
+      - Menggunakan zona waktu lokal dinamis via `flutter_timezone`.
+    - Notifikasi stopwatch sesi membaca `showStopwatchNotification({title, startedAt})`:
+      - Terintegrasi langsung di `ReadingTimerPage` saat sesi membaca dimulai atau dilanjutkan.
+      - Dibatalkan (`cancelStopwatchNotification`) saat sesi dijeda, disimpan, atau halaman ditutup.
+    - Manajemen izin: `requestPermission()` meminta izin `POST_NOTIFICATIONS` (Android 13+) saat pertama kali switch diaktifkan.
+    - Persistensi preferensi ke `SharedPreferences` (`reminder_enabled`, `reminder_hour`, `reminder_minute`, `stopwatch_notif_enabled`).
+    - Pembatalan otomatis jadwal notifikasi saat logout.
+  - **LightSensorService & Auto Theme ([`light_sensor_service.dart`](file:///c:/StoryLoka/lib/core/services/light_sensor_service.dart) — PRD §10.4):**
+    - Verifikasi paket `light_sensor: 3.0.2` di pub.dev (khusus Android native).
+    - Window moving average 3 detik (`calculateAverageLux`) untuk memfilter noise/fluktuasi sesaat.
+    - Logika hysteresis:
+      - Rata-rata < 10 lux $\rightarrow$ mode Gelap (Dark).
+      - Rata-rata > 40 lux $\rightarrow$ mode Terang (Light).
+      - Rata-rata 10–40 lux $\rightarrow$ buffer, pertahankan tema aktif sebelumnya.
+    - Rate limit perubahan tema: minimal selang waktu 5 detik.
+    - Fallback dinamis: jika sensor lux absen (platform non-Android/desktop/simulator), mode Auto mengikuti tema sistem bawaan dan menampilkan penjelasan di Profile: *"Sensor cahaya tidak tersedia, mengikuti tema sistem."*.
+    - Terhubung reaktif ke `ThemeController` saat `ThemeMode.system` dipilih di `ProfilePage`.
+  - **Sensor Kedua Gyroscope ([`sensor_service.dart`](file:///c:/StoryLoka/lib/core/services/sensor_service.dart) & [`snake_page.dart`](file:///c:/StoryLoka/lib/features/tools/snake/snake_page.dart) — PRD §10.4):**
+    - Implementasi sensor fisik kedua menggunakan Gyroscope (`sensors_plus`) via `startTiltListening` dan `tiltStream`.
+    - Opsi interaktif "Tilt Control (Gyroscope)" pada game Book Snake.
+    - Memungkinkan kemiringan fisik perangkat mengendalikan arah gerak ular secara responsif di samping kontrol tombol sentuh/keyboard.
+  - **Konfigurasi Izin Android & iOS (PRD §12):**
+    - `android/app/src/main/AndroidManifest.xml`:
+      - Label aplikasi resmi: `android:label="StoryLoka"`.
+      - Permissions lengkap: `POST_NOTIFICATIONS`, `VIBRATE`, `RECEIVE_BOOT_COMPLETED`, `INTERNET`, `USE_BIOMETRIC`, `CAMERA`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`.
+      - Receivers: `ScheduledNotificationReceiver` dan `ScheduledNotificationBootReceiver` dengan intent filter `ACTION_BOOT_COMPLETED`.
+      - Queries: URI scheme `geo` dan `https`.
+    - `ios/Runner/Info.plist`:
+      - `CFBundleDisplayName`: `StoryLoka`.
+      - Usage descriptions lengkap: `NSCameraUsageDescription`, `NSLocationWhenInUseUsageDescription`, `NSFaceIDUsageDescription`, `NSPhotoLibraryUsageDescription`.
+  - **Unit & Integration Tests ([`fase_b6_test.dart`](file:///c:/StoryLoka/test/fase_b6_test.dart)):**
+    - 9 pengujian: moving average lux 3 detik, aturan hysteresis (<10, >40, 10-40 buffer), rate limit 5 detik, auto fallback label, simpan & baca preferensi pengingat/stopwatch, instance NotificationService, dan stream sensor.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_b6_test.dart`: **9/9 tests passed**.
+  - `flutter test`: **128/128 tests passed** (100% lolos di seluruh 14 test suite; tidak ada regresi).
+- **DoD B6 Terpenuhi:**
+  - ✅ Notifikasi pengingat harian dengan `zonedSchedule`, `matchDateTimeComponents: DateTimeComponents.time`, `inexactAllowWhileIdle`, dan judul "Waktunya membaca".
+  - ✅ Notifikasi stopwatch sesi dengan `ongoing: true`, `usesChronometer: true`, dan timestamp waktu mulai.
+  - ✅ Izin `POST_NOTIFICATIONS` diminta saat pertama kali diaktifkan.
+  - ✅ Mode Auto dengan sensor cahaya, moving average 3 detik, hysteresis (<10 lux & >40 lux), dan rate limit 5 detik.
+  - ✅ Verifikasi paket sensor cahaya pub.dev + fallback tema sistem + fallback sensor kedua Gyroscope (Tilt Control Snake) terdokumentasi di `docs/DEVIATIONS.md`.
+  - ✅ AndroidManifest.xml dan Info.plist lengkap sesuai PRD §12.
+  - ✅ `flutter analyze` 0 issue dan seluruh 128 tes lolos.
+
+---
+
+### Fase B7 — Finalisasi & Kesiapan Rilis (PRD §13.2 & Bagian 15)
+- **Status:** SELESAI
+- **Komponen Utama:**
+  - **Ubah Default USE_FAKE ke false ([`providers.dart`](file:///c:/StoryLoka/lib/app/providers.dart)):**
+    - `AppConfig.useFakeData` diubah dari `defaultValue: true` menjadi `defaultValue: false`.
+    - Seluruh repository abstrak secara default mengikat implementasi nyata: `LocalLibraryRepository`, `LocalReadingRepository`, `LocalLedgerRepository`, `LocalFeedbackRepository`, `LocalScoreRepository`, `GoogleBooksRepository`, `OpenExchangeRateRepository`, `GeminiChatRepository`, `SupabaseAuthRepository`, `SupabaseProfileRepository`, dan `SyncService`.
+  - **Pembersihan Data Demo di Alur Nyata ([`demo_widgets.dart`](file:///c:/StoryLoka/lib/core/widgets/demo_widgets.dart)):**
+    - `DemoModeChip` otomatis mengembalikan `SizedBox.shrink()` jika `!AppConfig.useFakeData` atau `!kDebugMode`. Tidak ada lagi label "Mode demo" pada rute utama Home, Library, Add Book, Profile, Login, Register, maupun Lock Screen di alur nyata.
+    - Pada `CurrencyConverterPage`, label mode demo tidak ditampilkan lagi di alur nyata.
+    - `DemoControlsSheet` dan tombol simulasi biometrik dibatasi eksklusif hanya untuk `kDebugMode`.
+  - **Kompilasi & Build APK Android ([`build.gradle.kts`](file:///c:/StoryLoka/android/app/build.gradle.kts)):**
+    - Menambahkan konfigurasi `isCoreLibraryDesugaringEnabled = true` dan dependensi `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")` untuk kompatibilitas desugaring modern paket `flutter_local_notifications`.
+    - Berhasil membangun APK Android: `build\app\outputs\flutter-apk\app-debug.apk` (exit code 0).
+  - **Unit & Integration Tests ([`fase_b7_test.dart`](file:///c:/StoryLoka/test/fase_b7_test.dart)):**
+    - 5 pengujian otomatis untuk verifikasi default `USE_FAKE = false`, eliminasi chip demo pada alur nyata, registrasi seluruh repository nyata, dan label non-demo pada halaman mata uang.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (100% bersih tanpa warning).
+  - `flutter test test/fase_b7_test.dart`: **5/5 tests passed**.
+  - `flutter test`: **133/133 tests passed** (100% lolos di seluruh 15 file test suite proyek).
+  - `flutter build apk --debug`: **SUCCESS** (`build\app\outputs\flutter-apk\app-debug.apk`).
+- **DoD B7 Terpenuhi:**
+  - ✅ Default `USE_FAKE` diubah menjadi `false`.
+  - ✅ Tidak ada data demo dan chip "Mode demo" di alur nyata.
+  - ✅ DemoControls dan simulasi biometrik hanya tersedia di `kDebugMode`.
+  - ✅ Seluruh pengujian lolos (133/133 passed) dan `flutter analyze` 0 issue.
+  - ✅ `docs/DEVIATIONS.md` lengkap.
+  - ✅ Checklist Bagian 15 ditelusuri dan terverifikasi penuh.
+  - ✅ Build APK debug berhasil dibuat.
+
+---
+
+## Penelusuran Checklist Verifikasi Akhir (PRD Bagian 15)
+
+### Fungsional
+- [x] **Register/login/logout; session bertahan; password ter-hash di server; tanpa Firebase.**
+  - *Bukti:* `lib/data/repositories/supabase/supabase_repositories.dart` (`SupabaseAuthRepository`), RPC PostgreSQL `register_user`, `login_user`, `logout_session` dengan bcrypt salt di database Supabase tanpa Firebase/supabase.auth; sesi disimpan terenkripsi di `FlutterSecureStorage` (`SecureSessionStore`); teruji di `test/fase_a1_test.dart`, `test/fase_b2_test.dart`, `test/widget_test.dart`.
+- [x] **Biometrik aktif/nonaktif dan dipakai saat membuka aplikasi.**
+  - *Bukti:* `lib/core/services/biometric_service.dart` (`local_auth`), `MainActivity.kt` (`FlutterFragmentActivity`), switch biometrik di `ProfilePage`, dan penguncian di `LockScreenPage`; teruji di `test/fase_a1_test.dart` & `test/fase_b2_test.dart`.
+- [x] **Cari Title/Author/ISBN, scan barcode, shake to discover.**
+  - *Bukti:* `lib/data/repositories/remote/google_books_repository.dart` (`intitle:`, `inauthor:`, `isbn:`), `lib/features/add_book/scan_page.dart` (`mobile_scanner` EAN-13), dan `lib/core/services/sensor_service.dart` (shake accelerometer > 25 m/s²); teruji di `test/fase_b3_test.dart`.
+- [x] **Add to Collection/Wishlist tanpa duplikat; tombol berubah jadi "Added to …".**
+  - *Bukti:* `SearchBookDetailPage` (`_handleAddToCollection`, `_handleAddToWishlist`) yang memeriksa status buku di `LibraryRepository` dan mengubah label tombol; teruji di `test/fase_a2_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Wishlist → Add to Collection memindahkan buku.**
+  - *Bukti:* `LocalLibraryRepository.moveToCollection`, tombol aksi di `WishlistBookDetailPage` memindahkan buku ke koleksi dengan mereset status baca; teruji di `test/fase_a3_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Start Reading → Timer → Finish → Progress → Save/Finished → Finished Book → Home.**
+  - *Bukti:* Alur membaca wall-clock stopwatch di `ReadingTimerPage`, update progres halaman di `ReadingProgressPage`, dan rating/review dialog buku selesai; teruji di `test/fase_a4_test.dart`.
+- [x] **Currently Reading berganti sesuai buku terakhir yang dimulai; kosong setelah diselesaikan.**
+  - *Bukti:* `HomePage` (`_buildCurrentlyReadingSection`) dan `LocalLibraryRepository.getCurrentlyReading` merespon reaktif terhadap sesi membaca dan status `finished`; teruji di `test/fase_a3_test.dart` & `test/fase_a4_test.dart`.
+- [x] **Rating/review hanya bisa diisi setelah buku selesai.**
+  - *Bukti:* Form bintang 1–5 dan ulasan hanya aktif saat buku selesai di `ReadingProgressPage` dan tersimpan di database; teruji di `test/fase_a4_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Open Maps (izin diberi dan ditolak/lokasi manual).**
+  - *Bukti:* `lib/core/services/location_service.dart` (`geolocator` GPS, intent URI `geo:` dan web maps fallback), dialog izin, bottom sheet pencarian manual jika ditolak, serta shortcut pengaturan jika ditolak permanen; teruji di `test/fase_b5_test.dart`.
+- [x] **Konversi mata uang (≥3) dan waktu (WIB/WITA/WIT/London) benar.**
+  - *Bukti:* `CurrencyConverterPage` (USD, IDR, EUR, GBP, JPY via live API `open.er-api.com` + cache 12 jam) dan `TimeConverterPage` (paket `timezone` dengan penyesuaian DST otomatis London); teruji di `test/fase_a5_tools_test.dart` & `test/fase_b5_test.dart`.
+- [x] **AI Chat menjawab seputar buku dan menangani error.**
+  - *Bukti:* `GeminiChatRepository` (endpoint REST Generative Language v1beta, systemInstruction teman baca, batas 10 pesan riwayat, penanganan error 400/403/429/offline, dan retensi input teks); teruji di `test/fase_b5_test.dart`.
+- [x] **Snake dapat dimainkan, skor tersimpan, pause otomatis saat background.**
+  - *Bukti:* `SnakeEngine` (grid 20×20, buku sebagai makanan vektor), `SnakePage` (auto-pause on lifecycle background), skor tersimpan ke `LocalScoreRepository`; teruji di `test/fase_a5_tools_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Kesan & Pesan tersimpan dan langsung tampil.**
+  - *Bukti:* `FeedbackPage` dengan form nama, kesan, dan pesan tersimpan ke SQLite via `LocalFeedbackRepository` dan reaktif ditampilkan; teruji di `test/fase_a5_tools_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Notifikasi pengingat dan stopwatch bekerja.**
+  - *Bukti:* `NotificationService` (`flutter_local_notifications` 22.x, pengingat harian `zonedSchedule` dengan judul "Waktunya membaca", stopwatch sesi ongoing dengan `usesChronometer` dan timestamp mulai); teruji di `test/fase_b6_test.dart`.
+- [x] **Tema Light/Dark/Auto bekerja.**
+  - *Bukti:* `ThemeController`, `LightSensorService` (moving average 3s, hysteresis <10 lux dark, >40 lux light, jeda 5s), SegmentedButton di `ProfilePage`; teruji di `test/fase_a6_test.dart` & `test/fase_b6_test.dart`.
+- [x] **Reading Ledger menambah blok saat selesai; Verify Ledger mendeteksi data yang diubah.**
+  - *Bukti:* `LedgerService` (SHA-256 kanonikal, PoW prefix `"00"`, genesis block, verifikasi integritas rantai blok), tersimpan di SQLite, dan tombol Verify di `ReadingLedgerPage`; teruji di `test/fase_a4_test.dart` & `test/fase_b1_test.dart`.
+- [x] **Data offline tersinkron ke Supabase; login perangkat baru menarik data.**
+  - *Bukti:* `SyncService` (`pushPending` berurutan sesuai PRD §8.3, `pullAll` last-write-wins berdasarkan `updated_at`, upload avatar ke Storage, integrasi login/resume/logout/pull-to-refresh); teruji di `test/fase_b4_test.dart`.
+
+### Kualitas
+- [x] **Tidak ada data palsu yang tampil sebagai data nyata; tidak ada secret di repository.**
+  - *Bukti:* `AppConfig.useFakeData = false` secara default; `DemoModeChip` disembunyikan; data buku bersumber dari Google Books API nyata; harga kosong menampilkan "Harga tidak tersedia"; `.env` tercantum di `.gitignore` dan diakses hanya lewat `Env` (`env.dart`). Teruji di `test/fase_b7_test.dart`.
+- [x] **Spacing, radius, tipografi, tombol, dan nav konsisten dengan Bagian 4.**
+  - *Bukti:* `AppSpacing` (24 page margin, 16 gap/card padding), `cardRadius: 20`, `buttonRadius: 14`, font Fraunces & DM Sans, `PrimaryButton` 48px Deep Teal, Bottom Navigation 5-tab dengan tombol Add 56px Soft Apricot; teruji di `test/fase_a7_test.dart`.
+- [x] **Setiap layar punya state loading/empty/error.**
+  - *Bukti:* Home, Library, Add Book, Tools, Profile, Feedback, Snake, AI Chat, Detail Buku seluruhnya memiliki penanganan state `loading` (CircularProgressIndicator), `empty` (pesan editorial), dan `error` (pesan ramah + tombol coba lagi); teruji di `test/fase_a7_test.dart`.
+- [x] **Tidak ada overflow di 360×640 dan skala teks 1.3.**
+  - *Bukti:* Seluruh 8 layar utama diuji dan lulus uji rendering pada resolusi 360×640 px dengan `textScale: 1.3` tanpa RenderFlex overflow; teruji di `test/fase_a7_test.dart`.
+- [x] **`flutter analyze` bersih; semua tes lolos; APK debug berhasil dibuild.**
+  - *Bukti:* `flutter analyze` exit 0 (0 issues found), `flutter test` exit 0 (133/133 tests passed), `flutter build apk --debug` menghasilkan `build\app\outputs\flutter-apk\app-debug.apk`.
+- [x] **`docs/PROGRESS.md` dan `docs/DEVIATIONS.md` lengkap.**
+  - *Bukti:* Seluruh dokumentasi Fase A0–A7 dan B1–B7 lengkap dan terverifikasi.

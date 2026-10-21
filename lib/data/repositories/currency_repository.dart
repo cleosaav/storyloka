@@ -5,4 +5,7 @@ abstract class CurrencyRepository {
 
   /// Tanggal update kurs terakhir.
   Future<DateTime?> getLastUpdated();
+
+  /// Menandakan apakah data kurs saat ini bersumber dari cache offline/kedaluwarsa — PRD §9.2.
+  bool get isFromCache => false;
 }

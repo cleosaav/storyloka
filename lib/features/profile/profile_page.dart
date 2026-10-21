@@ -7,7 +7,10 @@ import 'package:provider/provider.dart';
 
 import '../../app/providers.dart';
 import '../../core/services/biometric_service.dart';
+import '../../core/services/light_sensor_service.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/services/secure_session_store.dart';
+import '../../core/services/sync_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
@@ -44,15 +47,31 @@ class _ProfilePageState extends State<ProfilePage> {
   int _totalReadingSeconds = 0;
   bool _isLoadingSummary = true;
 
-  // Notifikasi UI State (Tahap A — UI saja)
-  bool _readingReminderEnabled = true;
+  // Notifikasi Pengingat & Stopwatch — PRD §10.5
+  bool _readingReminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 20, minute: 0);
-  bool _stopwatchNotificationEnabled = true;
+  bool _stopwatchNotificationEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _loadSummary();
+    _loadNotificationSettings();
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    try {
+      final reminder = await NotificationService.instance.isReminderEnabled();
+      final time = await NotificationService.instance.getReminderTime();
+      final stopwatch = await NotificationService.instance.isStopwatchNotifEnabled();
+      if (mounted) {
+        setState(() {
+          _readingReminderEnabled = reminder;
+          _reminderTime = time;
+          _stopwatchNotificationEnabled = stopwatch;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadSummary() async {
@@ -112,6 +131,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (picked != null && mounted) {
       setState(() => _reminderTime = picked);
+      if (_readingReminderEnabled) {
+        await NotificationService.instance.saveReminderSettings(
+          enabled: true,
+          hour: picked.hour,
+          minute: picked.minute,
+        );
+      }
+      if (!mounted) return;
       AppSnackBar.show(
         context,
         message: 'Pengingat membaca diatur pukul ${_formatTimeOfDay(picked)}.',
@@ -161,7 +188,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ElevatedButton(
               onPressed: () async {
                 Navigator.of(dialogContext).pop();
-                await context.read<AuthController>().logout();
+                await NotificationService.instance.cancelDailyReadingReminder();
+                if (context.mounted) {
+                  await context.read<AuthController>().logout();
+                }
                 if (context.mounted) {
                   context.go('/login');
                 }
@@ -298,21 +328,68 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: AppSpacing.m),
                     const Divider(height: 1),
                     const SizedBox(height: AppSpacing.s),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () async {
-                          await context.push('/profile/edit');
-                          _loadSummary();
-                        },
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('Edit Profil'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: isDark
-                              ? AppColors.primaryDark
-                              : AppColors.deepTeal,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Indikator Sinkronisasi — PRD §8.3
+                        Flexible(
+                          child: ListenableBuilder(
+                            listenable: SyncService.instance,
+                            builder: (context, _) {
+                              final syncService = SyncService.instance;
+                              final isSynced = syncService.state == SyncState.synced;
+                              final isError = syncService.state == SyncState.error;
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isSynced
+                                        ? Icons.cloud_done_outlined
+                                        : (isError
+                                            ? Icons.cloud_off_outlined
+                                            : Icons.cloud_upload_outlined),
+                                    size: 14,
+                                    color: isSynced
+                                        ? AppColors.success
+                                        : (isError
+                                            ? AppColors.error
+                                            : (isDark
+                                                ? AppColors.mutedDark
+                                                : AppColors.mutedGray)),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      syncService.state.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppText.caption(
+                                        color: isDark
+                                            ? AppColors.mutedDark
+                                            : AppColors.mutedGray,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ),
-                      ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            await context.push('/profile/edit');
+                            _loadSummary();
+                          },
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text('Edit Profil'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: isDark
+                                ? AppColors.primaryDark
+                                : AppColors.deepTeal,
+                            textStyle: AppText.button(fontSize: 13),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -478,7 +555,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             icon: Icon(Icons.brightness_auto_outlined, size: 16),
                           ),
                         ],
-                        selected: {themeController.themeMode},
+                        selected: {themeController.userPreferenceMode},
                         onSelectionChanged: (newSelection) {
                           themeController.setThemeMode(newSelection.first);
                         },
@@ -511,9 +588,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: AppSpacing.s),
                     Text(
-                      themeController.themeMode == ThemeMode.system
-                          ? 'Auto: Mengikuti tema sistem perangkat (sensor cahaya Tahap B).'
-                          : themeController.themeMode == ThemeMode.dark
+                      themeController.userPreferenceMode == ThemeMode.system
+                          ? LightSensorService.instance.autoModeDescription
+                          : themeController.userPreferenceMode == ThemeMode.dark
                               ? 'Tema gelap aktif.'
                               : 'Tema terang (Warm Ivory) aktif.',
                       style: AppText.caption(
@@ -638,8 +715,28 @@ class _ProfilePageState extends State<ProfilePage> {
                           ? AppColors.primaryDark
                           : AppColors.deepTeal,
                       value: _readingReminderEnabled,
-                      onChanged: (val) {
+                      onChanged: (val) async {
+                        if (val) {
+                          final granted = await NotificationService.instance
+                              .requestPermission();
+                          if (!granted) {
+                            if (context.mounted) {
+                              AppSnackBar.show(
+                                context,
+                                message:
+                                    'Izin notifikasi ditolak. Aktifkan izin notifikasi StoryLoka di Pengaturan perangkat.',
+                                type: SnackBarType.warning,
+                              );
+                            }
+                            return;
+                          }
+                        }
                         setState(() => _readingReminderEnabled = val);
+                        await NotificationService.instance.saveReminderSettings(
+                          enabled: val,
+                          hour: _reminderTime.hour,
+                          minute: _reminderTime.minute,
+                        );
                       },
                     ),
                     if (_readingReminderEnabled) ...[
@@ -695,8 +792,25 @@ class _ProfilePageState extends State<ProfilePage> {
                   activeThumbColor:
                       isDark ? AppColors.primaryDark : AppColors.deepTeal,
                   value: _stopwatchNotificationEnabled,
-                  onChanged: (val) {
+                  onChanged: (val) async {
+                    if (val) {
+                      final granted = await NotificationService.instance
+                          .requestPermission();
+                      if (!granted) {
+                        if (context.mounted) {
+                          AppSnackBar.show(
+                            context,
+                            message:
+                                'Izin notifikasi ditolak. Aktifkan izin notifikasi StoryLoka di Pengaturan perangkat.',
+                            type: SnackBarType.warning,
+                          );
+                        }
+                        return;
+                      }
+                    }
                     setState(() => _stopwatchNotificationEnabled = val);
+                    await NotificationService.instance
+                        .setStopwatchNotifEnabled(val);
                   },
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/secure_session_store.dart';
+import '../../../core/services/sync_service.dart';
 import '../../database_helper.dart';
 import '../../models/chat_message.dart';
 import '../../models/feedback_entry.dart';
@@ -184,6 +185,7 @@ class LocalLibraryRepository implements LibraryRepository {
       data,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService.instance.trigger();
 
     return targetBook;
   }
@@ -203,6 +205,7 @@ class LocalLibraryRepository implements LibraryRepository {
       where: 'id = ?',
       whereArgs: [book.id],
     );
+    SyncService.instance.trigger();
 
     return updated;
   }
@@ -222,6 +225,7 @@ class LocalLibraryRepository implements LibraryRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    SyncService.instance.trigger();
   }
 
   @override
@@ -239,6 +243,7 @@ class LocalLibraryRepository implements LibraryRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    SyncService.instance.trigger();
 
     final updated = await getBookById(id);
     if (updated == null) {
@@ -315,6 +320,7 @@ class LocalReadingRepository implements ReadingRepository {
       sessionToSave.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService.instance.trigger();
   }
 
   @override
@@ -419,6 +425,7 @@ class LocalLedgerRepository implements LedgerRepository {
       blockToSave.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService.instance.trigger();
   }
 
   @override
@@ -497,6 +504,7 @@ class LocalFeedbackRepository implements FeedbackRepository {
       entryToSave.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService.instance.trigger();
   }
 }
 
@@ -557,6 +565,7 @@ class LocalScoreRepository implements ScoreRepository {
       scoreToSave.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService.instance.trigger();
   }
 
   @override

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/services/location_service.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -169,94 +169,15 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   }
 
   Future<void> _openMaps([String? query]) async {
-    final Uri uri = query == null || query.trim().isEmpty
-        ? Uri.parse('https://www.google.com/maps/search/toko+buku/')
-        : Uri.parse(
-            'https://www.google.com/maps/search/?api=1&query=toko+buku+di+${Uri.encodeComponent(query)}',
-          );
-
-    try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!launched && mounted) {
-        AppSnackBar.show(
-          context,
-          message: 'Tidak dapat membuka aplikasi Maps',
-          type: SnackBarType.warning,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          message: 'Gagal membuka Google Maps',
-          type: SnackBarType.error,
-        );
-      }
+    if (query != null && query.trim().isNotEmpty) {
+      await LocationService.instance.openMapsWithQuery(context, query);
+    } else {
+      await LocationService.instance.openNearbyBookstores(context);
     }
   }
 
   void _showManualLocationSheet() {
-    final locationController = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppSpacing.cardRadius),
-        ),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: AppSpacing.l,
-            right: AppSpacing.l,
-            top: AppSpacing.l,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + AppSpacing.l,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Cari Toko Buku Berdasarkan Kota',
-                style: AppText.sectionHeading(),
-              ),
-              const SizedBox(height: AppSpacing.s),
-              Text(
-                'Masukkan nama kota atau daerah untuk menemukan toko buku terdekat.',
-                style: AppText.body(),
-              ),
-              const SizedBox(height: AppSpacing.m),
-              TextField(
-                controller: locationController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Contoh: Jakarta, Yogyakarta, Bandung',
-                  prefixIcon: const Icon(Icons.location_city_rounded),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.l),
-              PrimaryButton(
-                label: 'Buka di Maps',
-                onPressed: () {
-                  final text = locationController.text.trim();
-                  Navigator.pop(ctx);
-                  if (text.isNotEmpty) {
-                    _openMaps(text);
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    LocationService.instance.showManualLocationSheet(context);
   }
 
   String _cleanSynopsis(String? text) {

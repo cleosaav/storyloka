@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/services/sensor_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text.dart';
@@ -36,6 +37,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   Timer? _ticker;
   int _highScore = 0;
   bool _scoreLoaded = false;
+  bool _tiltControlEnabled = false;
 
   @override
   void initState() {
@@ -49,6 +51,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    SensorService.instance.stopTiltListening();
     super.dispose();
   }
 
@@ -105,6 +108,21 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
       _ticker?.cancel();
     }
     setState(() {});
+  }
+
+  void _toggleTiltControl(bool val) {
+    setState(() => _tiltControlEnabled = val);
+    if (val) {
+      SensorService.instance.startTiltListening(
+        onDirection: (dir) {
+          if (!mounted) return;
+          if (_engine.status == SnakeStatus.ready) _startGame();
+          _engine.setDirection(dir);
+        },
+      );
+    } else {
+      SensorService.instance.stopTiltListening();
+    }
   }
 
   Future<void> _onGameOver() async {
@@ -414,7 +432,38 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.m),
+              const SizedBox(height: AppSpacing.s),
+
+              // Opsi Tilt Control (Gyroscope — PRD §10.4)
+              FilterChip(
+                avatar: Icon(
+                  Icons.screen_rotation_rounded,
+                  size: 16,
+                  color: _tiltControlEnabled ? AppColors.white : AppColors.deepTeal,
+                ),
+                label: Text(
+                  'Tilt Control (Gyroscope)',
+                  style: AppText.caption(
+                    color: _tiltControlEnabled
+                        ? AppColors.white
+                        : (isDark ? AppColors.inkDark : AppColors.ink),
+                  ),
+                ),
+                selected: _tiltControlEnabled,
+                onSelected: _toggleTiltControl,
+                selectedColor:
+                    isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                backgroundColor:
+                    isDark ? AppColors.surfaceDark : AppColors.warmIvory,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color:
+                        isDark ? AppColors.borderDark : AppColors.borderNeutral,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s),
 
               // D-Pad kontrol
               _DPad(

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../core/services/secure_session_store.dart';
+import '../../core/services/sync_service.dart';
 import '../../core/widgets/demo_widgets.dart';
 import '../../data/models/app_user.dart';
 import '../../data/repositories/auth_repository.dart';
@@ -86,6 +87,10 @@ class AuthController extends ChangeNotifier {
       _currentUser = user;
       _isBiometricLocked = false;
       _errorMessage = null;
+
+      // PRD §8.3: Pull data setelah login berhasil
+      SyncService.instance.pullAll(user.id);
+
       return true;
     } catch (e) {
       final msg = e.toString();
@@ -128,6 +133,10 @@ class AuthController extends ChangeNotifier {
       _currentUser = user;
       _isBiometricLocked = false;
       _errorMessage = null;
+
+      // PRD §8.3: Pull data setelah register berhasil
+      SyncService.instance.pullAll(user.id);
+
       return true;
     } catch (e) {
       final msg = e.toString();
@@ -145,12 +154,16 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// Logout & bersihkan session — PRD §7.1.
+  /// Logout & bersihkan session — PRD §7.1 & §8.3.
   Future<void> logout() async {
     _isLoading = true;
     notifyListeners();
 
     try {
+      // PRD §8.3: Sinkronkan pending changes sebelum logout
+      if (_currentUser != null) {
+        await SyncService.instance.syncBeforeLogout(_currentUser!.id);
+      }
       await authRepository.logout();
     } finally {
       _currentUser = null;

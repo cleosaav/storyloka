@@ -271,7 +271,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Konversi Mata Uang'), findsOneWidget);
-      expect(find.textContaining('Kurs contoh'), findsOneWidget);
+      expect(find.text('Kurs Semua Mata Uang (vs USD)'), findsOneWidget);
     });
 
     testWidgets('TimeConverterPage render tanpa overflow pada 360x640 + skala 1.3', (tester) async {
@@ -412,7 +412,7 @@ void main() {
     testWidgets('Bottom nav memiliki 5 item, label Semantics, dan tombol tengah 56px', (tester) async {
       await tester.pumpWidget(
         MultiProvider(
-          providers: buildAppProviders(),
+          providers: buildAppProviders(useFakeData: true),
           child: const StoryLokaApp(),
         ),
       );

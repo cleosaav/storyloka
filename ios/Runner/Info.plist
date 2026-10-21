@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Storyloka</string>
+	<string>StoryLoka</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,9 +15,17 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>storyloka</string>
+	<string>StoryLoka</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>NSCameraUsageDescription</key>
+	<string>StoryLoka membutuhkan akses kamera untuk memindai barcode ISBN buku dan mengambil foto profil.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>StoryLoka membutuhkan izin lokasi untuk menampilkan rekomendasi toko buku terdekat.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>StoryLoka menggunakan Face ID untuk mengamankan catatan dan sesi membaca Anda.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>StoryLoka membutuhkan akses galeri foto untuk memilih foto profil.</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/services/location_service.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -124,96 +124,16 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
     }
   }
 
-  Future<void> _openMaps([String query = 'toko buku terdekat']) async {
-    final encodedQuery = Uri.encodeComponent(query);
-    final uri = Uri.parse('geo:0,0?q=$encodedQuery');
-    final fallbackWebUri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encodedQuery');
-
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else if (await canLaunchUrl(fallbackWebUri)) {
-        await launchUrl(fallbackWebUri, mode: LaunchMode.externalApplication);
-      } else {
-        if (!mounted) return;
-        AppSnackBar.show(
-          context,
-          message: 'Tidak dapat membuka aplikasi Google Maps.',
-          type: SnackBarType.error,
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      AppSnackBar.show(
-        context,
-        message: 'Gagal membuka peta: $e',
-        type: SnackBarType.error,
-      );
+  Future<void> _openMaps([String? query]) async {
+    if (query != null && query.trim().isNotEmpty && query != 'toko buku terdekat') {
+      await LocationService.instance.openMapsWithQuery(context, query);
+    } else {
+      await LocationService.instance.openNearbyBookstores(context);
     }
   }
 
   void _showManualLocationSheet() {
-    final cities = [
-      'Jakarta',
-      'Bandung',
-      'Surabaya',
-      'Yogyakarta',
-      'Semarang',
-      'Malang',
-      'Denpasar',
-      'Medan',
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.l,
-              vertical: AppSpacing.xl,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cari Toko Buku di Kota Tertentu',
-                  style: AppText.cardHeading(
-                    color: isDark ? AppColors.inkDark : AppColors.ink,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.s),
-                Text(
-                  'Pilih kota untuk melihat toko buku di sekitar area tersebut:',
-                  style: AppText.caption(
-                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.m),
-                Wrap(
-                  spacing: AppSpacing.s,
-                  runSpacing: AppSpacing.s,
-                  children: cities.map((city) {
-                    return ActionChip(
-                      label: Text(city),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _openMaps('toko buku di $city');
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    LocationService.instance.showManualLocationSheet(context);
   }
 
   @override

@@ -9,6 +9,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../data/repositories/currency_repository.dart';
+import '../../app/providers.dart';
 
 // ─── Logika konversi murni (fungsi agar bisa dites) ──────────────────────────
 
@@ -111,22 +112,26 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
     super.dispose();
   }
 
+  bool _isFromCache = false;
+
   Future<void> _loadRates() async {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
       final repo = context.read<CurrencyRepository>();
       final rates = await repo.getRates('USD');
       final updated = await repo.getLastUpdated();
+      final fromCache = repo.isFromCache;
       if (mounted) {
         setState(() {
           _rates = rates;
           _lastUpdated = updated;
+          _isFromCache = fromCache;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() { _isLoading = false; _errorMessage = 'Gagal memuat kurs: $e'; });
+        setState(() { _isLoading = false; _errorMessage = e.toString().replaceFirst('Exception: ', ''); });
       }
     }
   }
@@ -147,7 +152,14 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
     } catch (_) {
       fmt = DateFormat('d MMM yyyy, HH:mm');
     }
-    return 'Kurs contoh (mode demo) • ${fmt.format(_lastUpdated!)}';
+    final formattedDate = fmt.format(_lastUpdated!);
+    if (AppConfig.useFakeData) {
+      return 'Kurs contoh (mode demo) • $formattedDate';
+    }
+    if (_isFromCache) {
+      return 'Kurs tersimpan, mungkin tidak terbaru • $formattedDate';
+    }
+    return 'Kurs diperbarui $formattedDate';
   }
 
   @override

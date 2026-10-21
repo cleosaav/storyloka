@@ -785,4 +785,7 @@ class FakeCurrencyRepository implements CurrencyRepository {
   Future<DateTime?> getLastUpdated() async {
     return DateTime.now();
   }
+
+  @override
+  bool get isFromCache => false;
 }

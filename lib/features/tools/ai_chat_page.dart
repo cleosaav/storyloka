@@ -105,8 +105,25 @@ class _AiChatPageState extends State<AiChatPage> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isSending = false);
-        _showError('Gagal mengirim pesan. Coba lagi.');
+        setState(() {
+          _isSending = false;
+          _inputCtrl.text = text;
+          _messages = _messages.where((m) => m.id != userMsg.id).toList();
+        });
+        final rawErr = e.toString().replaceFirst('Exception: ', '');
+        final errorMsg = rawErr.isNotEmpty ? rawErr : 'Gagal terhubung ke AI. Coba lagi.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Kirim ulang',
+              textColor: AppColors.white,
+              onPressed: () => _send(text),
+            ),
+          ),
+        );
       }
     }
   }
@@ -121,20 +138,6 @@ class _AiChatPageState extends State<AiChatPage> {
         );
       }
     });
-  }
-
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppColors.error,
-        action: SnackBarAction(
-          label: 'Kirim ulang',
-          textColor: AppColors.white,
-          onPressed: () => _send(),
-        ),
-      ),
-    );
   }
 
   Future<void> _confirmClearHistory() async {

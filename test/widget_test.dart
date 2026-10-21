@@ -32,9 +32,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1000));
     await tester.pumpAndSettle();
 
-    // Pastikan tab Home aktif dan menampilkan StoryLoka
+    // Pastikan tab Home aktif dan menampilkan StoryLoka tanpa chip demo
     expect(find.text('StoryLoka'), findsOneWidget);
-    expect(find.text('Mode demo'), findsOneWidget);
+    expect(find.text('Mode demo'), findsNothing);
 
     // Tap tab Library
     await tester.tap(find.text('Library'));

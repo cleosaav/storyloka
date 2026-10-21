@@ -4,6 +4,7 @@ import 'package:provider/single_child_widget.dart';
 
 import '../core/services/ledger_service.dart';
 import '../core/services/secure_session_store.dart';
+import '../core/services/sync_service.dart';
 import '../core/widgets/demo_widgets.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/book_search_repository.dart';
@@ -15,11 +16,14 @@ import '../data/repositories/ledger_repository.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/profile_repository.dart';
 import '../data/repositories/reading_repository.dart';
+import '../data/repositories/remote/exchange_rate_repository.dart';
+import '../data/repositories/remote/gemini_chat_repository.dart';
 import '../data/repositories/remote/google_books_repository.dart';
 import '../data/repositories/score_repository.dart';
 import '../features/auth/auth_controller.dart';
 import '../core/config/env.dart';
 import '../core/services/biometric_service.dart';
+import '../core/services/light_sensor_service.dart';
 import '../data/database_helper.dart';
 import '../data/repositories/local/local_repositories.dart';
 import '../data/repositories/supabase/supabase_repositories.dart';
@@ -32,21 +36,41 @@ class AppConfig {
   /// Flag penentu implementasi repository: Fake vs Nyata (SQLite/Supabase).
   /// Default true selama Tahap A; diubah menjadi false pada Fase B7.
   static const bool useFakeData =
-      bool.fromEnvironment('USE_FAKE', defaultValue: true);
+      bool.fromEnvironment('USE_FAKE', defaultValue: false);
 }
 
-/// Pengontrol tema dinamis (Light / Dark / System/Auto) — PRD §4.7.
+/// Pengontrol tema dinamis (Light / Dark / System/Auto) — PRD §4.7 & §10.4.
 class ThemeController extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.light;
+  ThemeMode? _sensorResolvedMode;
 
-  ThemeMode get themeMode => _themeMode;
+  ThemeMode get themeMode {
+    if (_themeMode == ThemeMode.system && _sensorResolvedMode != null) {
+      return _sensorResolvedMode!;
+    }
+    return _themeMode;
+  }
 
-  bool get isDark => _themeMode == ThemeMode.dark;
+  /// Pengaturan preferensi yang dipilih pengguna di UI (Light / Dark / Auto).
+  ThemeMode get userPreferenceMode => _themeMode;
+
+  bool get isDark => themeMode == ThemeMode.dark;
   bool get isAuto => _themeMode == ThemeMode.system;
 
   void setThemeMode(ThemeMode mode) {
     if (_themeMode != mode) {
       _themeMode = mode;
+      _sensorResolvedMode = null;
+      if (mode == ThemeMode.system) {
+        LightSensorService.instance.startListening(
+          onThemeChanged: (resolved) {
+            _sensorResolvedMode = resolved;
+            notifyListeners();
+          },
+        );
+      } else {
+        LightSensorService.instance.stopListening();
+      }
       notifyListeners();
     }
   }
@@ -116,6 +140,7 @@ List<SingleChildWidget> buildAppProviders({
       Provider<ScoreRepository>.value(value: fakeScore),
       Provider<ChatRepository>.value(value: fakeChat),
       Provider<CurrencyRepository>.value(value: fakeCurrency),
+      ChangeNotifierProvider<SyncService>.value(value: SyncService.instance),
     ];
   } else {
     // Fase B1 & B2: Implementasi nyata (SQLite + Supabase + Biometrik)
@@ -137,10 +162,6 @@ List<SingleChildWidget> buildAppProviders({
       sessionStore: sessionStore,
     );
     final localScore = LocalScoreRepository(
-      dbHelper: helper,
-      sessionStore: sessionStore,
-    );
-    final localChat = LocalChatRepository(
       dbHelper: helper,
       sessionStore: sessionStore,
     );
@@ -167,7 +188,13 @@ List<SingleChildWidget> buildAppProviders({
 
     // Fase B3: Google Books API nyata sebagai BookSearchRepository
     final searchRepo = GoogleBooksRepository();
-    final currencyRepo = FakeCurrencyRepository(demoControls: demoControls);
+    // Fase B5: Kurs nyata (open.er-api.com) & Gemini AI nyata
+    final currencyRepo = OpenExchangeRateRepository();
+    final chatRepo = GeminiChatRepository(
+      dbHelper: helper,
+      userIdProvider: () async =>
+          (await sessionStore.getUser())?.id ?? 'default_user',
+    );
 
     final authController = AuthController(
       authRepository: realAuth,
@@ -191,8 +218,9 @@ List<SingleChildWidget> buildAppProviders({
       Provider<LedgerService>.value(value: LedgerService(localLedger)),
       Provider<FeedbackRepository>.value(value: localFeedback),
       Provider<ScoreRepository>.value(value: localScore),
-      Provider<ChatRepository>.value(value: localChat),
+      Provider<ChatRepository>.value(value: chatRepo),
       Provider<CurrencyRepository>.value(value: currencyRepo),
+      ChangeNotifierProvider<SyncService>.value(value: SyncService.instance),
     ];
   }
 }
