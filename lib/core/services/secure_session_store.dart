@@ -3,12 +3,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../data/models/app_user.dart';
 
 /// Penyimpanan sesi aman — PRD §7.1 & §13.0.
-/// Menyimpan token session dan profil singkat di FlutterSecureStorage
-/// dengan fallback in-memory untuk ketahanan di platform/lingkungan test.
+/// Menyimpan token session, profil singkat, dan mode pembuat sesi (real / fake)
+/// di FlutterSecureStorage dengan fallback in-memory untuk ketahanan di platform/lingkungan test.
 class SecureSessionStore {
   static const String _keyToken = 'storyloka_session_token';
   static const String _keyUser = 'storyloka_session_user';
   static const String _keyBiometric = 'storyloka_biometric_enabled';
+  static const String _keySessionMode = 'storyloka_session_mode';
 
   final FlutterSecureStorage _storage;
   final Map<String, String> _fallback = {};
@@ -45,12 +46,20 @@ class SecureSessionStore {
   }
 
   /// Simpan session setelah login/register berhasil.
+  /// Parameter [mode] mencatat mode pembuat sesi ('real' atau 'fake') — Fase R1.
   Future<void> saveSession({
     required String token,
     required AppUser user,
+    String mode = 'real',
   }) async {
     await _write(_keyToken, token);
     await _write(_keyUser, jsonEncode(user.toJson()));
+    await _write(_keySessionMode, mode);
+  }
+
+  /// Ambil mode pembuat sesi yang tersimpan ('real' atau 'fake').
+  Future<String?> getSessionMode() async {
+    return await _read(_keySessionMode);
   }
 
   /// Simpan pembaruan data pengguna ke session store.
@@ -81,10 +90,11 @@ class SecureSessionStore {
     return token != null && token.isNotEmpty;
   }
 
-  /// Hapus token dan data user (saat logout / reset password).
+  /// Hapus token, data user, dan penanda mode (saat logout / reset password).
   Future<void> clearSession() async {
     await _delete(_keyToken);
     await _delete(_keyUser);
+    await _delete(_keySessionMode);
   }
 
   /// Status pengaturan biometrik (aktif/nonaktif).

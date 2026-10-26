@@ -30,4 +30,43 @@ class AppColors {
   static const Color trackDark = Color(0xFF2A3638);
 
   // softApricot, sageGreen, error, success sama di dark mode.
+
+  // ─── Dynamic Helpers ───
+  static Color primary(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? primaryDark : deepTeal;
+
+  static Color inkColor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? inkDark : ink;
+
+  static Color muted(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? mutedDark : mutedGray;
+
+  static Color surface(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? surfaceDark : white;
+
+  static Color border(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? borderDark : borderNeutral;
+
+  static Color background(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? bgDark : warmIvory;
+
+  static Color resolve(BuildContext context, {required Color light, required Color dark}) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+}
+
+/// Ekstensi BuildContext untuk warna dinamis tema secara ringkas dan konsisten
+extension ThemeContextX on BuildContext {
+  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  Color get primaryColor => isDark ? AppColors.primaryDark : AppColors.deepTeal;
+  Color get onPrimaryColor => AppColors.white;
+  Color get surfaceColor => isDark ? AppColors.surfaceDark : AppColors.white;
+  Color get backgroundColor => isDark ? AppColors.bgDark : AppColors.warmIvory;
+  Color get inkColor => isDark ? AppColors.inkDark : AppColors.ink;
+  Color get mutedColor => isDark ? AppColors.mutedDark : AppColors.mutedGray;
+  Color get borderColor => isDark ? AppColors.borderDark : AppColors.borderNeutral;
+  Color get trackColor => isDark ? AppColors.trackDark : AppColors.trackNeutral;
+
+  /// Helper untuk warna dinamis kustom: jika dark pakai [dark], jika light pakai [light]
+  Color themed(Color light, Color dark) => isDark ? dark : light;
 }

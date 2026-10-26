@@ -121,37 +121,40 @@ class _FinishedBookPageState extends State<FinishedBookPage> {
       },
       child: Scaffold(
         body: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.deepTeal),
+            ? Center(
+                child: CircularProgressIndicator(color: context.primaryColor),
               )
             : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.pageMargin,
-                    vertical: AppSpacing.xl,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Spacer(),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.pageMargin,
+                        vertical: AppSpacing.xl,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: AppSpacing.l),
 
-                      // Ilustrasi Perayaan Ringan (ikon piala & buku dalam badge melingkar)
-                      Container(
+                          // Ilustrasi Perayaan Ringan (ikon piala & buku dalam badge melingkar)
+                          Container(
                         width: 110,
                         height: 110,
                         decoration: BoxDecoration(
-                          color: AppColors.softApricot.withValues(alpha: 0.35),
+                          color: AppColors.softApricot.withValues(alpha: isDark ? 0.2 : 0.35),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppColors.softApricot,
+                            color: isDark ? AppColors.softApricot : AppColors.softApricot,
                             width: 3,
                           ),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Icon(
                             Icons.emoji_events_rounded,
                             size: 58,
-                            color: AppColors.deepTeal,
+                            color: isDark ? AppColors.softApricot : AppColors.deepTeal,
                           ),
                         ),
                       ),
@@ -213,63 +216,68 @@ class _FinishedBookPageState extends State<FinishedBookPage> {
                           ),
                           decoration: BoxDecoration(
                             color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusL),
                             border: Border.all(
                               color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
                             ),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              Column(
-                                children: [
-                                  Text(
-                                    '${_book!.pageCount ?? _book!.currentPage}',
-                                    style: AppText.sectionHeading(
-                                      color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      '${_book!.pageCount ?? _book!.currentPage}',
+                                      style: AppText.sectionHeading(
+                                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Halaman Selesai',
-                                    style: AppText.caption(
-                                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Halaman Selesai',
+                                      textAlign: TextAlign.center,
+                                      style: AppText.caption(
+                                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                               Container(
                                 height: 32,
                                 width: 1,
                                 color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
                               ),
-                              Column(
-                                children: [
-                                  Text(
-                                    _formatTotalDuration(_totalReadingSeconds),
-                                    style: AppText.sectionHeading(
-                                      color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      _formatTotalDuration(_totalReadingSeconds),
+                                      style: AppText.sectionHeading(
+                                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Waktu Membaca',
-                                    style: AppText.caption(
-                                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Waktu Membaca',
+                                      textAlign: TextAlign.center,
+                                      style: AppText.caption(
+                                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ],
 
-                      const Spacer(),
+                      const SizedBox(height: AppSpacing.xl),
 
                       // Tombol Back to Home + Countdown
                       PrimaryButton(
-                        label: 'Back to Home ($_countdown s)',
+                        label: 'Kembali ke Beranda ($_countdown dtk)',
                         icon: Icons.home_rounded,
                         onPressed: _goHomeNow,
                       ),
@@ -278,6 +286,8 @@ class _FinishedBookPageState extends State<FinishedBookPage> {
                   ),
                 ),
               ),
+            ),
+          ),
       ),
     );
   }

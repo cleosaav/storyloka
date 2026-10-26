@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:storyloka/app/providers.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/widgets/demo_widgets.dart';
 import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
@@ -12,6 +13,7 @@ void main() {
     late AuthController authController;
 
     setUp(() {
+      AppConfig.useFakeData = true;
       sessionStore = SecureSessionStore();
       authRepo = FakeAuthRepository(sessionStore: sessionStore);
       demoControls = DemoControls();
@@ -20,6 +22,10 @@ void main() {
         sessionStore: sessionStore,
         demoControls: demoControls,
       );
+    });
+
+    tearDown(() {
+      AppConfig.useFakeData = false;
     });
 
     test('FakeAuthRepository register with taken@demo.com throws EMAIL_TAKEN', () async {

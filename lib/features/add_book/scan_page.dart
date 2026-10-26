@@ -164,18 +164,12 @@ class _ScanPageState extends State<ScanPage> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.l),
-                  TextField(
+                  AppTextField(
                     controller: _isbnController,
+                    label: 'Nomor ISBN',
+                    hintText: 'Contoh: 9786024526986',
+                    prefixIcon: const Icon(Icons.numbers_rounded),
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'Nomor ISBN',
-                      hintText: 'Contoh: 9786024526986',
-                      prefixIcon: const Icon(Icons.numbers_rounded),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.inputRadius),
-                      ),
-                    ),
                     onSubmitted: (_) => _searchManualIsbn(),
                   ),
                   const SizedBox(height: AppSpacing.l),
@@ -223,14 +217,14 @@ class _ScanPageState extends State<ScanPage> {
                 color: AppColors.softApricot,
                 width: 2.5,
               ),
-              borderRadius: BorderRadius.circular(AppSpacing.s),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusS),
             ),
           ),
         ),
         // Loading overlay
         if (_isLoading)
           Container(
-            color: Colors.black54,
+            color: (isDark ? AppColors.bgDark : AppColors.ink).withValues(alpha: 0.65),
             child: const Center(
               child: CircularProgressIndicator(
                 color: AppColors.softApricot,
@@ -248,13 +242,15 @@ class _ScanPageState extends State<ScanPage> {
               vertical: AppSpacing.xs,
             ),
             decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(AppSpacing.s),
+              color: (isDark ? AppColors.bgDark : AppColors.ink).withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusS),
             ),
             child: Text(
               'Arahkan kamera ke barcode ISBN (EAN-13)',
               textAlign: TextAlign.center,
-              style: AppText.caption(color: Colors.white),
+              style: AppText.caption(
+                color: isDark ? AppColors.inkDark : AppColors.white,
+              ),
             ),
           ),
         ),

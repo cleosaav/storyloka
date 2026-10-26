@@ -88,41 +88,48 @@ class _LockScreenPageState extends State<LockScreenPage> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pagePadding,
-            vertical: AppSpacing.l,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(),
-
-              // Lingkaran Avatar / Icon Kunci
-              GestureDetector(
-                onTap: _promptBiometric,
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.surfaceDark
-                        : AppColors.softApricot.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.softApricot,
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.fingerprint_rounded,
-                      size: 48,
-                      color: primaryColor,
-                    ),
-                  ),
-                ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.pagePadding,
+                vertical: AppSpacing.l,
               ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Lingkaran Avatar / Icon Kunci
+                  Semantics(
+                    label: 'Pindai sidik jari atau biometrik untuk membuka kunci',
+                    button: true,
+                    child: GestureDetector(
+                      onTap: _promptBiometric,
+                      child: Container(
+                        width: AppSpacing.biometricCircleSize,
+                        height: AppSpacing.biometricCircleSize,
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? AppColors.surfaceDark
+                              : AppColors.softApricot.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.softApricot,
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.fingerprint_rounded,
+                            size: AppSpacing.iconXxl,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               const SizedBox(height: AppSpacing.xl),
 
               // Sapaan Editorial
@@ -150,7 +157,7 @@ class _LockScreenPageState extends State<LockScreenPage> {
                 textAlign: TextAlign.center,
               ),
 
-              const Spacer(),
+              const SizedBox(height: AppSpacing.xxl),
 
               // Tombol Simulasi Biometrik (Hanya di mode demo — PRD §13.0 Fase A1)
               if (kDebugMode) ...[
@@ -179,22 +186,20 @@ class _LockScreenPageState extends State<LockScreenPage> {
               const SizedBox(height: AppSpacing.l),
 
               // Tombol Login dengan Password (menghapus session lokal -> /login)
-              TextButton(
+              TertiaryButton(
+                label: 'Login dengan password',
+                color: isDark
+                    ? AppColors.mutedDark
+                    : AppColors.mutedGray,
                 onPressed: _handlePasswordFallback,
-                child: Text(
-                  'Login dengan password',
-                  style: AppText.button(
-                    color: isDark
-                        ? AppColors.mutedDark
-                        : AppColors.mutedGray,
-                  ),
-                ),
               ),
               const SizedBox(height: AppSpacing.m),
             ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 }

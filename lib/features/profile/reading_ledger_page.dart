@@ -96,7 +96,7 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
         ),
       ),
       body: RefreshIndicator(
-        color: AppColors.deepTeal,
+        color: context.primaryColor,
         onRefresh: _loadBlocks,
         child: _buildBody(isDark),
       ),
@@ -105,8 +105,8 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
 
   Widget _buildBody(bool isDark) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.deepTeal),
+      return Center(
+        child: CircularProgressIndicator(color: context.primaryColor),
       );
     }
 
@@ -148,9 +148,9 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
+              Icon(
                 Icons.link_rounded,
-                color: AppColors.deepTeal,
+                color: context.primaryColor,
                 size: 28,
               ),
               const SizedBox(width: AppSpacing.m),
@@ -194,12 +194,17 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Verifikasi Keutuhan Rantai',
-                    style: AppText.cardHeading(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
+                  Expanded(
+                    child: Text(
+                      'Verifikasi Keutuhan Rantai',
+                      style: AppText.cardHeading(
+                        color: isDark ? AppColors.inkDark : AppColors.ink,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.s),
                   Text(
                     '${_blocks.length} Blok',
                     style: AppText.metadata(
@@ -334,7 +339,12 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
 
   Widget _buildBlockCard(LedgerBlock block, bool isDark) {
     final isGenesis = block.blockIndex == 0;
-    final dateFormat = DateFormat('dd MMM yyyy, HH:mm');
+    DateFormat dateFormat;
+    try {
+      dateFormat = DateFormat('dd MMM yyyy, HH:mm', 'id_ID');
+    } catch (_) {
+      dateFormat = DateFormat('dd MMM yyyy, HH:mm');
+    }
     final formattedDate = dateFormat.format(block.timestamp.toLocal());
 
     final title = isGenesis
@@ -356,32 +366,43 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isGenesis
-                      ? AppColors.softApricot.withValues(alpha: 0.4)
-                      : AppColors.deepTeal.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isGenesis ? Icons.star_rounded : Icons.menu_book_rounded,
-                      size: 14,
-                      color: isGenesis ? AppColors.deepTeal : AppColors.deepTeal,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isGenesis ? 'Blok #0 (Genesis)' : 'Blok #${block.blockIndex}',
-                      style: AppText.caption(
-                        color: isGenesis ? AppColors.deepTeal : AppColors.deepTeal,
-                      ).copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ],
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isGenesis
+                        ? AppColors.softApricot.withValues(alpha: isDark ? 0.25 : 0.4)
+                        : context.primaryColor.withValues(alpha: isDark ? 0.2 : 0.15),
+                    borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isGenesis ? Icons.star_rounded : Icons.menu_book_rounded,
+                        size: 14,
+                        color: isGenesis
+                            ? (isDark ? AppColors.softApricot : AppColors.deepTeal)
+                            : context.primaryColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          isGenesis ? 'Blok #0 (Genesis)' : 'Blok #${block.blockIndex}',
+                          style: AppText.caption(
+                            color: isGenesis
+                                ? (isDark ? AppColors.softApricot : AppColors.deepTeal)
+                                : context.primaryColor,
+                          ).copyWith(fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              const SizedBox(width: AppSpacing.s),
               Text(
                 formattedDate,
                 style: AppText.caption(
@@ -436,7 +457,7 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
               Expanded(
                 child: _buildHashRow(
                   'PoW Status',
-                  'Awalan "${LedgerService.targetPrefix}" (Valid)',
+                  'Valid (${LedgerService.targetPrefix})',
                   isDark,
                   textColor: AppColors.sageGreen,
                 ),
@@ -468,9 +489,8 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
           value,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 11,
+          style: AppText.code(
+            fontSize: 12,
             fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
             color: textColor ?? (isDark ? AppColors.inkDark : AppColors.ink),
           ),

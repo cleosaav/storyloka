@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../app/providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
@@ -8,6 +10,8 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/demo_widgets.dart';
+import '../../core/widgets/responsive_body.dart';
+import '../../data/repositories/fake/fake_repositories.dart';
 import 'auth_controller.dart';
 
 /// Halaman Login — PRD §7.1 & §13.0 Fase A1.
@@ -19,11 +23,26 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController(text: 'reader@storyloka.app');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _credentialsInitialized = false;
 
   String? _emailError;
   String? _passwordError;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_credentialsInitialized) {
+      _credentialsInitialized = true;
+      final auth = context.read<AuthController>();
+      final isFake = AppConfig.useFakeData || (auth.authRepository is FakeAuthRepository);
+      if (isFake) {
+        _emailController.text = 'reader@storyloka.app';
+        _passwordController.text = 'password123';
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -79,6 +98,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final auth = context.watch<AuthController>();
+    final isFake = AppConfig.useFakeData || (auth.authRepository is FakeAuthRepository);
 
     return Scaffold(
       appBar: AppBar(
@@ -95,10 +115,9 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ],
       ),
-      body: SafeArea(
+      body: ResponsiveBody(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pagePadding,
             vertical: AppSpacing.l,
           ),
           child: Column(
@@ -206,8 +225,9 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: AppSpacing.xl),
 
               // Navigasi ke Register
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
                     'Belum punya akun?',
@@ -215,56 +235,58 @@ class _LoginPageState extends State<LoginPage> {
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),
                   ),
-                  TextButton(
+                  TertiaryButton(
+                    label: 'Daftar',
+                    color: isDark
+                        ? AppColors.primaryDark
+                        : AppColors.deepTeal,
                     onPressed: () {
                       auth.clearError();
                       context.push('/register');
                     },
-                    child: Text(
-                      'Daftar',
-                      style: AppText.button(
-                        color: isDark
-                            ? AppColors.primaryDark
-                            : AppColors.deepTeal,
-                      ).copyWith(fontWeight: FontWeight.bold),
-                    ),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.l),
 
-              // Kartu bantuan mode demo
-              NotesCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline_rounded,
-                          size: 18,
-                          color: AppColors.deepTeal,
+              // Kartu bantuan mode demo (hanya tampil jika useFakeData && kDebugMode)
+              if (isFake && kDebugMode) ...[
+                const SizedBox(height: AppSpacing.l),
+                NotesCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: AppSpacing.iconM,
+                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                          ),
+                          const SizedBox(width: AppSpacing.s),
+                          Expanded(
+                            child: Text(
+                              'Catatan Mode Demo (Fase A1)',
+                              style: AppText.caption(
+                                color: isDark ? AppColors.inkDark : AppColors.ink,
+                              ).copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        '• Masukkan email apa saja & password ≥ 8 karakter.\n'
+                        '• Password "wrong" untuk simulasi kredensial salah.\n'
+                        '• Email "taken@demo.com" untuk simulasi email terdaftar.',
+                        style: AppText.caption(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
                         ),
-                        const SizedBox(width: AppSpacing.s),
-                        Text(
-                          'Catatan Mode Demo (Fase A1)',
-                          style: AppText.button(
-                            fontSize: 13,
-                            color: AppColors.ink,
-                          ).copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      '• Masukkan email apa saja & password ≥ 8 karakter.\n'
-                      '• Password "wrong" untuk simulasi kredensial salah.\n'
-                      '• Email "taken@demo.com" untuk simulasi email terdaftar.',
-                      style: AppText.caption(color: AppColors.ink),
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

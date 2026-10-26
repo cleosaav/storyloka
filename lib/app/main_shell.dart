@@ -123,7 +123,7 @@ class MainShell extends StatelessWidget {
       button: true,
       child: InkWell(
         onTap: () => _onItemTapped(index),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusL),
         child: ConstrainedBox(
           constraints: const BoxConstraints(
             minWidth: AppSpacing.touchTarget,
@@ -137,7 +137,7 @@ class MainShell extends StatelessWidget {
               children: [
                 Icon(
                   isActive ? activeIcon : icon,
-                  size: 24,
+                  size: AppSpacing.iconL,
                   color: isActive ? activeColor : inactiveColor,
                 ),
                 const SizedBox(height: 2),
@@ -147,7 +147,6 @@ class MainShell extends StatelessWidget {
                     color: isActive ? activeColor : inactiveColor,
                   ).copyWith(
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                    fontSize: 11,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -168,11 +167,13 @@ class MainShell extends StatelessWidget {
     );
   }
 
-  /// Tombol Add di tengah: 56px lingkaran softApricot dengan plus Deep Teal
+  /// Tombol Add di tengah: 56px lingkaran softApricot dengan plus dinamis
   Widget _buildCenterAddButton({
     required BuildContext context,
     required bool isActive,
   }) {
+    final plusColor = context.primaryColor;
+
     return Semantics(
       label: 'Add Book',
       selected: isActive,
@@ -193,13 +194,13 @@ class MainShell extends StatelessWidget {
               ),
             ],
             border: isActive
-                ? Border.all(color: AppColors.deepTeal, width: 2)
+                ? Border.all(color: plusColor, width: 2)
                 : null,
           ),
-          child: const Center(
+          child: Center(
             child: Icon(
               Icons.add_rounded,
-              color: AppColors.deepTeal,
+              color: plusColor,
               size: 28,
             ),
           ),

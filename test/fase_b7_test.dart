@@ -16,7 +16,7 @@ import 'package:storyloka/data/repositories/library_repository.dart';
 import 'package:storyloka/data/repositories/local/local_repositories.dart';
 import 'package:storyloka/data/repositories/reading_repository.dart';
 import 'package:storyloka/data/repositories/remote/exchange_rate_repository.dart';
-import 'package:storyloka/data/repositories/remote/gemini_chat_repository.dart';
+import 'package:storyloka/data/repositories/remote/fallback_chat_repository.dart';
 import 'package:storyloka/data/repositories/remote/google_books_repository.dart';
 import 'package:storyloka/data/repositories/score_repository.dart';
 import 'package:storyloka/features/tools/currency_converter_page.dart';
@@ -85,7 +85,7 @@ void main() {
 
       expect(searchRepo, isA<GoogleBooksRepository>());
       expect(currencyRepo, isA<OpenExchangeRateRepository>());
-      expect(chatRepo, isA<GeminiChatRepository>());
+      expect(chatRepo, isA<FallbackChatRepository>());
       expect(libRepo, isA<LocalLibraryRepository>());
       expect(readRepo, isA<LocalReadingRepository>());
       expect(ledgerRepo, isA<LocalLedgerRepository>());

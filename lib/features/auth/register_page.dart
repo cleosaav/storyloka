@@ -7,6 +7,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/demo_widgets.dart';
+import '../../core/widgets/responsive_body.dart';
 import 'auth_controller.dart';
 
 /// Halaman Register — PRD §7.1 & §13.0 Fase A1.
@@ -130,10 +131,9 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ],
       ),
-      body: SafeArea(
+      body: ResponsiveBody(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pagePadding,
             vertical: AppSpacing.l,
           ),
           child: Column(
@@ -280,8 +280,9 @@ class _RegisterPageState extends State<RegisterPage> {
               const SizedBox(height: AppSpacing.xl),
 
               // Link ke Login
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
                     'Sudah punya akun?',
@@ -289,19 +290,15 @@ class _RegisterPageState extends State<RegisterPage> {
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),
                   ),
-                  TextButton(
+                  TertiaryButton(
+                    label: 'Masuk',
+                    color: isDark
+                        ? AppColors.primaryDark
+                        : AppColors.deepTeal,
                     onPressed: () {
                       auth.clearError();
                       context.pop();
                     },
-                    child: Text(
-                      'Masuk',
-                      style: AppText.button(
-                        color: isDark
-                            ? AppColors.primaryDark
-                            : AppColors.deepTeal,
-                      ).copyWith(fontWeight: FontWeight.bold),
-                    ),
                   ),
                 ],
               ),

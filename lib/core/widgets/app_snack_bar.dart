@@ -46,12 +46,12 @@ class AppSnackBar {
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: textColor, size: 20),
+            Icon(icon, color: textColor, size: AppSpacing.iconM),
             const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Text(
                 message,
-                style: AppText.bodyMedium(color: textColor).copyWith(fontSize: 14),
+                style: AppText.metadata(color: textColor),
               ),
             ),
           ],

@@ -129,13 +129,16 @@ class BookCard extends StatelessWidget {
                 ],
                 if (rating != null && rating! > 0) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Row(
-                    children: List.generate(
-                      5,
-                      (index) => Icon(
-                        index < rating! ? Icons.star : Icons.star_border,
-                        size: 16,
-                        color: AppColors.softApricot,
+                  Semantics(
+                    label: 'Rating $rating dari 5 bintang',
+                    child: Row(
+                      children: List.generate(
+                        5,
+                        (index) => Icon(
+                          index < rating! ? Icons.star : Icons.star_border,
+                          size: 16,
+                          color: AppColors.softApricot,
+                        ),
                       ),
                     ),
                   ),
@@ -153,12 +156,15 @@ class BookCard extends StatelessWidget {
   }
 }
 
-/// BookGridCard — Kartu buku vertikal untuk tampilan grid 3-kolom (PRD §7.3).
+/// BookGridCard — Kartu buku vertikal untuk tampilan grid 3-kolom (PRD §7.3 & §7.6).
 class BookGridCard extends StatelessWidget {
   final String title;
   final String? authors;
   final String? coverUrl;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final int? rating;
+  final Widget? statusBadge;
 
   const BookGridCard({
     super.key,
@@ -166,51 +172,85 @@ class BookGridCard extends StatelessWidget {
     this.authors,
     this.coverUrl,
     this.onTap,
+    this.onLongPress,
+    this.rating,
+    this.statusBadge,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final semanticsLabel = 'Buku $title${authors != null && authors!.isNotEmpty ? ' oleh $authors' : ''}${rating != null && rating! > 0 ? ', rating $rating dari 5 bintang' : ''}';
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cover Buku rasio 2:3
-          Expanded(
-            child: SizedBox(
-              width: double.infinity,
-              child: BookCover(
-                coverUrl: coverUrl,
+    return Semantics(
+      label: semanticsLabel,
+      button: true,
+      onLongPress: onLongPress,
+      onLongPressHint: onLongPress != null ? 'Hapus buku' : null,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cover Buku rasio 2:3
+            Expanded(
+              child: SizedBox(
                 width: double.infinity,
-                borderRadius: 12,
+                child: BookCover(
+                  coverUrl: coverUrl,
+                  width: double.infinity,
+                  borderRadius: 10,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.s),
-          // Judul buku max 2 baris
-          Text(
-            title,
-            style: AppText.bodyMedium(
-              color: isDark ? AppColors.inkDark : AppColors.ink,
-            ).copyWith(fontSize: 13, height: 1.25),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (authors != null && authors!.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            // Judul buku max 2 baris (Fraunces — design-system.md §3)
             Text(
-              authors!,
-              style: AppText.caption(
-                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+              title,
+              style: AppText.gridBookTitle(
+                color: isDark ? AppColors.inkDark : AppColors.ink,
               ),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
+            if (authors != null && authors!.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                authors!,
+                style: AppText.caption(
+                  color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (rating != null && rating! > 0) ...[
+              const SizedBox(height: 2),
+              Semantics(
+                label: 'Rating $rating dari 5 bintang',
+                child: Row(
+                  children: List.generate(
+                    5,
+                    (i) => Icon(
+                      i < rating! ? Icons.star_rounded : Icons.star_outline_rounded,
+                      size: 12,
+                      color: AppColors.softApricot,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (statusBadge != null) ...[
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: statusBadge!,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

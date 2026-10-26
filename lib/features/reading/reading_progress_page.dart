@@ -8,6 +8,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/book_widgets.dart';
@@ -205,30 +206,13 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
   Future<void> _confirmFinishedThisBook() async {
     if (_book == null || _isSaving) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Selesaikan Buku Ini?'),
-          content: Text(
-            'Yakin sudah selesai membaca buku "${_book!.title}"? Buku akan ditandai selesai dan dicatat ke dalam Reading Ledger Anda.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.deepTeal,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Ya, Selesai'),
-            ),
-          ],
-        );
-      },
+      title: 'Selesaikan Buku Ini?',
+      message:
+          'Yakin sudah selesai membaca buku "${_book!.title}"? Buku akan ditandai selesai dan dicatat ke dalam Reading Ledger Anda.',
+      cancelLabel: 'Batal',
+      confirmLabel: 'Ya, Selesai',
     );
 
     if (confirmed == true && mounted) {
@@ -306,8 +290,8 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
 
   Widget _buildBody(bool isDark) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.deepTeal),
+      return Center(
+        child: CircularProgressIndicator(color: context.primaryColor),
       );
     }
 
@@ -359,16 +343,16 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
               padding: const EdgeInsets.all(AppSpacing.m),
               decoration: BoxDecoration(
                 color: AppColors.sageGreen.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
                 border: Border.all(
                   color: AppColors.sageGreen.withValues(alpha: 0.5),
                 ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.check_circle_outline_rounded,
-                    color: AppColors.deepTeal,
+                    color: context.primaryColor,
                     size: 24,
                   ),
                   const SizedBox(width: AppSpacing.m),
@@ -515,7 +499,8 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
                     min: 0,
                     max: _totalPages.toDouble(),
                     divisions: _totalPages > 0 ? _totalPages : 1,
-                    activeColor: AppColors.deepTeal,
+                    semanticFormatterCallback: (val) => 'Halaman ${val.round()} dari $_totalPages',
+                    activeColor: context.primaryColor,
                     inactiveColor: isDark ? AppColors.borderDark : AppColors.sageGreen.withValues(alpha: 0.3),
                     onChanged: _onSliderChanged,
                   ),
@@ -525,28 +510,19 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'Halaman:',
-                        style: AppText.bodyMedium(
-                          color: isDark ? AppColors.inkDark : AppColors.ink,
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 100,
                       child: AppTextField(
                         controller: _pageController,
-                        hintText: 'Halaman',
+                        hintText: 'Halaman saat ini',
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
                         onChanged: _onPageTextChanged,
                       ),
                     ),
-                    const SizedBox(width: AppSpacing.s),
+                    const SizedBox(width: AppSpacing.m),
                     Text(
-                      'dari ${_totalPages > 0 ? _totalPages : "?"}',
-                      style: AppText.body(
-                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                      '/ ${_totalPages > 0 ? _totalPages : "?"} hlm',
+                      style: AppText.bodyMedium(
+                        color: isDark ? AppColors.inkDark : AppColors.ink,
                       ),
                     ),
                   ],

@@ -50,6 +50,15 @@ class AppText {
         color: color,
       );
 
+  /// Angka display medium (36–40) untuk skor besar atau hasil konversi nilai.
+  static TextStyle displayMedium({Color? color, double fontSize = 36}) =>
+      GoogleFonts.fraunces(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w600,
+        height: 1.15,
+        color: color,
+      );
+
   // ─── DM Sans (body / controls) ───
 
   /// Body 16 Regular
@@ -89,6 +98,29 @@ class AppText {
   static TextStyle caption({Color? color}) => GoogleFonts.dmSans(
         fontSize: 12,
         fontWeight: FontWeight.w500,
+        height: 1.4,
+        color: color,
+      );
+
+  // ─── Grid & Code Tokens ───
+
+  /// Judul buku di kartu grid pustaka — Fraunces 12 SemiBold (design-system.md §3)
+  static TextStyle gridBookTitle({Color? color}) => GoogleFonts.fraunces(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+        color: color,
+      );
+
+  /// Teks monospace / hash kode (PRD §10.2) — minimum 12 px
+  static TextStyle code({
+    Color? color,
+    double fontSize = 12,
+    FontWeight fontWeight = FontWeight.w400,
+  }) =>
+      GoogleFonts.jetBrainsMono(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
         height: 1.4,
         color: color,
       );

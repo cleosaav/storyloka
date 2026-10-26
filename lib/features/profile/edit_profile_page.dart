@@ -240,8 +240,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         avatarImageWidget = ClipOval(
           child: Image.file(
             File(_avatarPath!),
-            width: 96,
-            height: 96,
+            width: AppSpacing.avatarImageSize,
+            height: AppSpacing.avatarImageSize,
             fit: BoxFit.cover,
           ),
         );
@@ -249,8 +249,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         avatarImageWidget = ClipOval(
           child: Image.network(
             _avatarPath!,
-            width: 96,
-            height: 96,
+            width: AppSpacing.avatarImageSize,
+            height: AppSpacing.avatarImageSize,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => _defaultAvatar(isDark),
           ),
@@ -284,8 +284,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
               child: Stack(
                 children: [
                   Container(
-                    width: 104,
-                    height: 104,
+                    width: AppSpacing.avatarContainerSize,
+                    height: AppSpacing.avatarContainerSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -299,18 +299,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     bottom: 0,
                     right: 0,
                     child: Material(
-                      color: AppColors.deepTeal,
+                      color: context.primaryColor,
                       shape: const CircleBorder(),
                       elevation: 2,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: _showImageSourceSheet,
-                        child: const Padding(
-                          padding: EdgeInsets.all(AppSpacing.s),
-                          child: Icon(
-                            Icons.camera_alt_rounded,
-                            size: 18,
-                            color: AppColors.white,
+                      child: Semantics(
+                        label: 'Ubah foto profil',
+                        button: true,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: _showImageSourceSheet,
+                          child: const Padding(
+                            padding: EdgeInsets.all(AppSpacing.s),
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              size: AppSpacing.iconM,
+                              color: AppColors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -320,13 +324,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ),
             const SizedBox(height: AppSpacing.s),
-            TextButton.icon(
+            TertiaryButton(
+              label: 'Ganti Foto',
+              icon: Icons.edit_outlined,
               onPressed: _showImageSourceSheet,
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Ganti Foto'),
-              style: TextButton.styleFrom(
-                foregroundColor: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-              ),
             ),
             const SizedBox(height: AppSpacing.l),
 
@@ -378,13 +379,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _defaultAvatar(bool isDark) {
     return CircleAvatar(
-      radius: 46,
+      radius: AppSpacing.avatarXLargeRadius,
       backgroundColor: isDark
           ? AppColors.primaryDark.withValues(alpha: 0.3)
           : AppColors.sageGreen.withValues(alpha: 0.4),
       child: Icon(
         Icons.person_rounded,
-        size: 48,
+        size: AppSpacing.iconXxl,
         color: isDark ? AppColors.inkDark : AppColors.deepTeal,
       ),
     );

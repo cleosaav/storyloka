@@ -7,24 +7,30 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'app/app.dart';
 import 'app/providers.dart';
 import 'core/config/env.dart';
+import 'core/config/startup_status.dart';
+import 'core/services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz_data.initializeTimeZones(); // PRD §9.5 — inisialisasi database timezone
   await initializeDateFormatting('id_ID', null);
 
+  // Inisialisasi NotificationService secara eksplisit sebelum runApp — PRD §10.5 & Bagian 12
+  await NotificationService.instance.initialize();
+
   // Muat file .env sebagai satu-satunya titik akses konfigurasi — PRD §3
   await Env.load();
 
-  // Inisialisasi Supabase jika kredensial .env tersedia
+  // Inisialisasi Supabase jika kredensial .env tersedia — PRD §3 & Fase R1
   if (Env.isSupabaseConfigured) {
     try {
       await Supabase.initialize(
         url: Env.supabaseUrl,
         publishableKey: Env.supabaseAnonKey,
       );
-    } catch (_) {
-      // Tangani error inisialisasi dengan anggun tanpa crash
+      StartupStatus.instance.recordSupabaseSuccess();
+    } catch (e) {
+      StartupStatus.instance.recordSupabaseError(e.toString());
     }
   }
 

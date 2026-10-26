@@ -60,8 +60,8 @@ void main() {
       final reply = await repo.sendMessage('Rekomendasi buku fiksi', history);
 
       expect(reply, equals('Halo! Saya asisten StoryLoka.'));
-      // Periksa endpoint menggunakan model valid (gemini-1.5-flash jika tidak diset / default)
-      expect(capturedUri.path, contains('models/gemini-1.5-flash:generateContent'));
+      // Periksa endpoint menggunakan model valid (default gemini-3.5-flash-lite) — Fase R3 & R4
+      expect(capturedUri.path, contains('models/gemini-3.5-flash-lite:generateContent'));
       expect(capturedHeaders['x-goog-api-key'], equals('test-api-key'));
       expect(capturedHeaders['Content-Type'], equals('application/json'));
 

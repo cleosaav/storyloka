@@ -10,6 +10,7 @@ import '../../core/widgets/app_card.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../core/widgets/demo_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
+import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
 import '../../data/repositories/library_repository.dart';
 import '../auth/auth_controller.dart';
@@ -115,9 +116,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: _buildBody(isDark, userName, initialLetter),
+      body: ResponsiveBody(
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          child: _buildBody(isDark, userName, initialLetter),
+        ),
       ),
     );
   }
@@ -163,11 +166,10 @@ class _HomePageState extends State<HomePage> {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.pageMargin,
         vertical: AppSpacing.m,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 1. Header sapaan: Hello, {nama}! + Avatar
           Row(
@@ -204,7 +206,7 @@ class _HomePageState extends State<HomePage> {
                   onTap: () {
                     context.go('/profile');
                   },
-                  borderRadius: BorderRadius.circular(24),
+                  customBorder: const CircleBorder(),
                   child: Container(
                     width: 48,
                     height: 48,
@@ -224,7 +226,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.sectionGap),
 
           // 2. Card Reading Summary (3 angka: Koleksi, Sedang dibaca, Selesai)
           _buildReadingSummaryCard(isDark),
@@ -251,7 +253,7 @@ class _HomePageState extends State<HomePage> {
     return AppCard(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.s,
-        vertical: AppSpacing.l,
+        vertical: AppSpacing.cardPadding,
       ),
       child: Row(
         children: [
@@ -322,7 +324,7 @@ class _HomePageState extends State<HomePage> {
   /// Card Currently Reading — PRD §7.2 butir 3 & §7.4.
   Widget _buildCurrentlyReadingSection(bool isDark) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           'Currently Reading',
@@ -332,131 +334,126 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: AppSpacing.m),
         if (_currentlyReading == null) ...[
-          // Kondisi 1: Kosong
-          AppCard(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            child: Column(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.sageGreen.withValues(alpha: 0.25),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.auto_stories_outlined,
-                    color: AppColors.deepTeal,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.m),
-                Text(
-                  'Start Your Reading Journey',
-                  style: AppText.cardHeading(
-                    color: isDark ? AppColors.inkDark : AppColors.ink,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'Your next favorite book is waiting for you.',
-                  style: AppText.caption(
-                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.l),
-                PrimaryButton(
-                  label: 'Add Book',
-                  icon: Icons.add_rounded,
-                  onPressed: () {
-                    context.go('/add');
-                  },
-                ),
-              ],
-            ),
+          // Kondisi 1: Kosong (EmptyStateCard horizontal)
+          EmptyStateCard.horizontal(
+            icon: Icons.auto_stories_outlined,
+            title: 'Start Your Reading Journey',
+            message: 'Your next favorite book is waiting for you.',
+            actionLabel: 'Add Book',
+            actionIcon: Icons.add_rounded,
+            onAction: () {
+              context.go('/add');
+            },
           ),
         ] else ...[
-          // Kondisi 2: Ada buku yang sedang dibaca
+          // Kondisi 2: Ada buku yang sedang dibaca (selebar penuh)
           AppCard(
-            padding: const EdgeInsets.all(AppSpacing.l),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+                final isNarrow = constraints.maxWidth < 340 || textScale > 1.25;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Cover min 80x120
-                    BookCover(
-                      coverUrl: _currentlyReading!.coverUrl,
-                      width: 80,
-                      height: 120,
-                      borderRadius: 10,
-                    ),
-                    const SizedBox(width: AppSpacing.l),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _currentlyReading!.title,
-                            style: AppText.cardHeading(
-                              color: isDark ? AppColors.inkDark : AppColors.ink,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Cover min 80x120, rasio 2:3
+                        Semantics(
+                          label: 'Cover buku ${_currentlyReading!.title}',
+                          image: true,
+                          child: BookCover(
+                            coverUrl: _currentlyReading!.coverUrl,
+                            width: 80,
+                            height: 120,
+                            borderRadius: 10,
                           ),
-                          if (_currentlyReading!.authors != null &&
-                              _currentlyReading!.authors!.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              _currentlyReading!.authors!,
-                              style: AppText.caption(
-                                color: isDark
-                                    ? AppColors.mutedDark
-                                    : AppColors.mutedGray,
+                        ),
+                        const SizedBox(width: AppSpacing.l),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _currentlyReading!.title,
+                                style: AppText.cardHeading(
+                                  color: isDark ? AppColors.inkDark : AppColors.ink,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                          const SizedBox(height: AppSpacing.m),
-                          ReadingProgressBar(
-                            currentPage: _currentlyReading!.currentPage,
-                            totalPages: _currentlyReading!.pageCount ?? 0,
+                              if (_currentlyReading!.authors != null &&
+                                  _currentlyReading!.authors!.isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(
+                                  _currentlyReading!.authors!,
+                                  style: AppText.caption(
+                                    color: isDark
+                                        ? AppColors.mutedDark
+                                        : AppColors.mutedGray,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              const SizedBox(height: AppSpacing.m),
+                              ReadingProgressBar(
+                                currentPage: _currentlyReading!.currentPage,
+                                totalPages: _currentlyReading!.pageCount ?? 0,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.l),
-                // Tombol Read dan Update
-                Row(
-                  children: [
-                    Expanded(
-                      child: PrimaryButton(
+                    const SizedBox(height: AppSpacing.l),
+                    // Tombol Read dan Update
+                    if (isNarrow) ...[
+                      PrimaryButton(
                         label: 'Read',
                         icon: Icons.play_arrow_rounded,
                         onPressed: () {
                           context.push('/reading/timer/${_currentlyReading!.id}');
                         },
                       ),
-                    ),
-                    const SizedBox(width: AppSpacing.m),
-                    Expanded(
-                      child: SecondaryButton(
+                      const SizedBox(height: AppSpacing.s),
+                      SecondaryButton(
                         label: 'Update',
                         icon: Icons.edit_note_rounded,
                         onPressed: () {
                           context.push('/reading/progress/${_currentlyReading!.id}');
                         },
                       ),
-                    ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: PrimaryButton(
+                              label: 'Read',
+                              icon: Icons.play_arrow_rounded,
+                              onPressed: () {
+                                context.push('/reading/timer/${_currentlyReading!.id}');
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.m),
+                          Expanded(
+                            child: SecondaryButton(
+                              label: 'Update',
+                              icon: Icons.edit_note_rounded,
+                              onPressed: () {
+                                context.push('/reading/progress/${_currentlyReading!.id}');
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],
@@ -469,7 +466,7 @@ class _HomePageState extends State<HomePage> {
     final recentBooks = _collectionBooks.take(3).toList();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -484,55 +481,27 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            TextButton(
+            TertiaryButton(
+              label: 'See all',
+              trailingIcon: Icons.arrow_forward_rounded,
+              color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
               onPressed: () {
                 context.go('/library?filter=collection');
               },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'See all',
-                    style: AppText.button(
-                      color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 16,
-                    color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                  ),
-                ],
-              ),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.s),
         if (recentBooks.isEmpty) ...[
-          AppCard(
-            padding: const EdgeInsets.all(AppSpacing.l),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Belum ada buku di koleksi Anda.',
-                    style: AppText.body(
-                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.m),
-                PrimaryButton(
-                  label: 'Add Book',
-                  onPressed: () => context.go('/add'),
-                ),
-              ],
-            ),
+          EmptyStateCard.horizontal(
+            icon: Icons.collections_bookmark_outlined,
+            message: 'Belum ada buku di koleksi Anda.',
+            actionLabel: 'Add Book',
+            actionIcon: Icons.add_rounded,
+            onAction: () => context.go('/add'),
           ),
         ] else ...[
-          // Deretan 3 cover terbaru (cover saja, rasio 2:3)
+          // Deretan 3 cover terbaru (cover saja, rasio 2:3, jarak antarcover 12)
           Row(
             children: List.generate(3, (index) {
               if (index < recentBooks.length) {
@@ -542,22 +511,33 @@ class _HomePageState extends State<HomePage> {
                     padding: EdgeInsets.only(
                       right: index < 2 ? AppSpacing.m : 0,
                     ),
-                    child: InkWell(
-                      onTap: () async {
-                        await context.push('/book/collection/${book.id}');
-                        if (mounted) _loadData();
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: BookCover(
-                        coverUrl: book.coverUrl,
-                        width: double.infinity,
-                        borderRadius: 12,
+                    child: Semantics(
+                      label: 'Buka detail buku ${book.title}',
+                      button: true,
+                      child: InkWell(
+                        onTap: () async {
+                          await context.push('/book/collection/${book.id}');
+                          if (mounted) _loadData();
+                        },
+                        borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
+                        child: BookCover(
+                          coverUrl: book.coverUrl,
+                          width: double.infinity,
+                          borderRadius: AppSpacing.inputRadius,
+                        ),
                       ),
                     ),
                   ),
                 );
               } else {
-                return const Expanded(child: SizedBox());
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: index < 2 ? AppSpacing.m : 0,
+                    ),
+                    child: const SizedBox(),
+                  ),
+                );
               }
             }),
           ),
@@ -571,7 +551,7 @@ class _HomePageState extends State<HomePage> {
     final recentBooks = _wishlistBooks.take(3).toList();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -586,55 +566,27 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            TextButton(
+            TertiaryButton(
+              label: 'See all',
+              trailingIcon: Icons.arrow_forward_rounded,
+              color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
               onPressed: () {
                 context.go('/library?filter=wishlist');
               },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'See all',
-                    style: AppText.button(
-                      color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 16,
-                    color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                  ),
-                ],
-              ),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.s),
         if (recentBooks.isEmpty) ...[
-          AppCard(
-            padding: const EdgeInsets.all(AppSpacing.l),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Wishlist Anda masih kosong.',
-                    style: AppText.body(
-                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.m),
-                PrimaryButton(
-                  label: 'Add Book',
-                  onPressed: () => context.go('/add'),
-                ),
-              ],
-            ),
+          EmptyStateCard.horizontal(
+            icon: Icons.bookmark_border_rounded,
+            message: 'Wishlist Anda masih kosong.',
+            actionLabel: 'Add Book',
+            actionIcon: Icons.add_rounded,
+            onAction: () => context.go('/add'),
           ),
         ] else ...[
-          // Deretan 3 cover terbaru (cover saja, rasio 2:3)
+          // Deretan 3 cover terbaru (cover saja, rasio 2:3, jarak antarcover 12)
           Row(
             children: List.generate(3, (index) {
               if (index < recentBooks.length) {
@@ -644,22 +596,33 @@ class _HomePageState extends State<HomePage> {
                     padding: EdgeInsets.only(
                       right: index < 2 ? AppSpacing.m : 0,
                     ),
-                    child: InkWell(
-                      onTap: () async {
-                        await context.push('/book/wishlist/${book.id}');
-                        if (mounted) _loadData();
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: BookCover(
-                        coverUrl: book.coverUrl,
-                        width: double.infinity,
-                        borderRadius: 12,
+                    child: Semantics(
+                      label: 'Buka detail buku ${book.title}',
+                      button: true,
+                      child: InkWell(
+                        onTap: () async {
+                          await context.push('/book/wishlist/${book.id}');
+                          if (mounted) _loadData();
+                        },
+                        borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
+                        child: BookCover(
+                          coverUrl: book.coverUrl,
+                          width: double.infinity,
+                          borderRadius: AppSpacing.inputRadius,
+                        ),
                       ),
                     ),
                   ),
                 );
               } else {
-                return const Expanded(child: SizedBox());
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: index < 2 ? AppSpacing.m : 0,
+                    ),
+                    child: const SizedBox(),
+                  ),
+                );
               }
             }),
           ),

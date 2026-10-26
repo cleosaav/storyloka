@@ -45,10 +45,10 @@ class ReadingPlaceholderPage extends StatelessWidget {
                   color: AppColors.sageGreen.withValues(alpha: 0.25),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.timer_outlined,
                   size: 48,
-                  color: AppColors.deepTeal,
+                  color: context.primaryColor,
                 ),
               ),
               const SizedBox(height: AppSpacing.l),

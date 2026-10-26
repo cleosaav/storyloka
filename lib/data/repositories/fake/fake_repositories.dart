@@ -229,6 +229,7 @@ class FakeAuthRepository implements AuthRepository {
     await _sessionStore.saveSession(
       token: 'fake-token-${_uuid.v4()}',
       user: currentUser!,
+      mode: 'fake',
     );
 
     return currentUser!;
@@ -256,6 +257,7 @@ class FakeAuthRepository implements AuthRepository {
     await _sessionStore.saveSession(
       token: 'fake-token-${_uuid.v4()}',
       user: currentUser!,
+      mode: 'fake',
     );
 
     return currentUser!;

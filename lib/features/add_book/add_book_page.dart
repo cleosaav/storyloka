@@ -118,6 +118,12 @@ class _AddBookPageState extends State<AddBookPage> {
   }
 
   Future<void> _pickRandomBook() async {
+    AppSnackBar.show(
+      context,
+      message: 'Mencari buku acak...',
+      type: SnackBarType.info,
+    );
+
     try {
       final repository = context.read<BookSearchRepository>();
       final book = await repository.randomBook();
@@ -168,45 +174,41 @@ class _AddBookPageState extends State<AddBookPage> {
         ),
         // DemoModeChip dihapus — Fase B3.
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Search Bar + Shake/Shuffle Icon Button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.l,
-              AppSpacing.s,
-              AppSpacing.l,
-              AppSpacing.s,
-            ),
-            child: Row(
+      body: ResponsiveBody(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Search Bar + Shake/Shuffle Icon Button
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AppSpacing.s,
+              ),
+              child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: AppTextField(
                     controller: _searchController,
                     onChanged: _onSearchChanged,
+                    onSubmitted: (query) {
+                      _debounceTimer?.cancel();
+                      if (query.trim().length >= 2) {
+                        _performSearch(query.trim());
+                      }
+                    },
                     textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: _selectedFilter.placeholder,
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              tooltip: 'Hapus pencarian',
-                              icon: const Icon(Icons.clear_rounded, size: 20),
-                              onPressed: () {
-                                _searchController.clear();
-                                _onSearchChanged('');
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.m,
-                        vertical: AppSpacing.m,
-                      ),
-                    ),
+                    hintText: _selectedFilter.placeholder,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? AppIconButton(
+                            tooltip: 'Hapus pencarian',
+                            icon: Icons.clear_rounded,
+                            size: 20,
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                          )
+                        : null,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.s),
@@ -214,18 +216,20 @@ class _AddBookPageState extends State<AddBookPage> {
                 Material(
                   color: isDark ? AppColors.surfaceDark : AppColors.sageGreen.withValues(alpha: 0.25),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                    borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
                     side: BorderSide(
                       color: isDark ? AppColors.mutedDark.withValues(alpha: 0.3) : AppColors.sageGreen,
                     ),
                   ),
-                  child: IconButton(
-                    tooltip: 'Shake to Discover (Buku Acak)',
-                    icon: Icon(
-                      Icons.shuffle_rounded,
+                  child: SizedBox(
+                    width: AppSpacing.inputHeight,
+                    height: AppSpacing.inputHeight,
+                    child: AppIconButton(
+                      tooltip: 'Shake to Discover (Buku Acak)',
+                      icon: Icons.shuffle_rounded,
                       color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+                      onPressed: _pickRandomBook,
                     ),
-                    onPressed: _pickRandomBook,
                   ),
                 ),
               ],
@@ -234,54 +238,19 @@ class _AddBookPageState extends State<AddBookPage> {
 
           // Search Type Selector: Title | Author | ISBN
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-            child: SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<SearchFilterType>(
-                showSelectedIcon: false,
-                segments: SearchFilterType.values
-                    .map((filter) => ButtonSegment<SearchFilterType>(
-                          value: filter,
-                          label: Text(filter.label, maxLines: 1),
-                        ))
-                    .toList(),
-                selected: {_selectedFilter},
-                onSelectionChanged: (newSelection) =>
-                    _onFilterSelected(newSelection.first),
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: AppSpacing.s),
-                  ),
-                  backgroundColor:
-                      WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return isDark
-                          ? AppColors.primaryDark
-                          : AppColors.deepTeal;
-                    }
-                    return Colors.transparent;
-                  }),
-                  foregroundColor:
-                      WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return Colors.white;
-                    }
-                    return isDark ? AppColors.inkDark : AppColors.ink;
-                  }),
-                ),
-              ),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: FilterTabs(
+              tabs: SearchFilterType.values.map((filter) => filter.label).toList(),
+              selectedIndex: SearchFilterType.values.indexOf(_selectedFilter),
+              onTabSelected: (index) =>
+                  _onFilterSelected(SearchFilterType.values[index]),
             ),
           ),
 
           // Scan Barcode Entry Row
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.l,
-              AppSpacing.m,
-              AppSpacing.l,
-              AppSpacing.s,
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.s,
             ),
             child: AppCard(
               onTap: () => context.push('/scan'),
@@ -336,19 +305,23 @@ class _AddBookPageState extends State<AddBookPage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildBody(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final childAspectRatio = textScale > 1.0 ? 0.52 / (1.0 + (textScale - 1.0) * 0.8) : 0.52;
+
     // 1. Loading State (Shimmer skeleton 3 kolom)
     if (_isLoading) {
       return GridView.builder(
-        padding: const EdgeInsets.all(AppSpacing.l),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          childAspectRatio: 0.52,
+          childAspectRatio: childAspectRatio,
           crossAxisSpacing: AppSpacing.m,
           mainAxisSpacing: AppSpacing.l,
         ),
@@ -375,7 +348,7 @@ class _AddBookPageState extends State<AddBookPage> {
                   color: isDark
                       ? AppColors.surfaceDark
                       : AppColors.mutedGray.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
                 ),
               ),
               const SizedBox(height: 4),
@@ -386,7 +359,7 @@ class _AddBookPageState extends State<AddBookPage> {
                   color: isDark
                       ? AppColors.surfaceDark
                       : AppColors.mutedGray.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
                 ),
               ),
             ],
@@ -505,10 +478,10 @@ class _AddBookPageState extends State<AddBookPage> {
 
     // 5. Success State (Grid 3 kolom BookGridCard)
     return GridView.builder(
-      padding: const EdgeInsets.all(AppSpacing.l),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.52,
+        childAspectRatio: childAspectRatio,
         crossAxisSpacing: AppSpacing.m,
         mainAxisSpacing: AppSpacing.l,
       ),

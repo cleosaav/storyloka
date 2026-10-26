@@ -197,3 +197,200 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
 3. **Verifikasi Pub.dev dan Pelepasan Paket `light_sensor` (PRD §10.4)**
    - **Keputusan:** Paket `light_sensor: 3.0.2` pada pub.dev memiliki konfigurasi usang yang masih mereferensikan repositori `jcenter()` yang telah dihapus total pada Gradle 9, sehingga menyebabkan kegagalan evaluasi build Gradle Android. Sesuai instruksi PRD §10.4 dan prompt ("Verifikasi dulu paket sensor cahaya di pub.dev; jika bermasalah, pakai fallback gyroscope..."), paket tersebut dilepas dari dependensi proyek, dan digantikan secara elegan dengan fallback tema sistem pada `LightSensorService` serta sensor fisik kedua menggunakan Gyroscope (`sensors_plus`) untuk fitur Tilt Control di game Snake.
    - **Alasan:** Menjamin keberhasilan build APK rilis/debug Android sekaligus tetap memenuhi ketentuan minimal 2 sensor fisik perangkat nyata secara interaktif dan stabil.
+
+---
+
+## Fase U2 — Perbaikan HomePage
+
+1. **Tata Letak Adaptif `EmptyStateCard.horizontal`**
+   - **Keputusan:** Mengimplementasikan konstruktor `EmptyStateCard.horizontal` dengan susunan baris horizontal (ikon kecil di kiri; judul, pesan, dan tombol di kanan) yang menggunakan `LayoutBuilder` untuk mendeteksi layar sempit (<340 px) atau skala teks besar (>1.15). Saat kondisi sempit terjadi, susunan secara otomatis beralih menjadi vertikal.
+   - **Alasan:** Menyelesaikan masalah card Currently Reading kosong yang sebelumnya berukuran ±40% dan rata kiri, menyamakan gaya visual antara Currently Reading, Collection, dan Wishlist, serta menjamin tidak ada teks terpotong atau desakan tombol pada skala teks 1.3 sesuai `docs/spec/wireframe.md` bagian 2/2a dan `docs/spec/design-system.md` bagian 5.
+
+2. **Dukungan `trailingIcon` pada `TertiaryButton`**
+   - **Keputusan:** Menambahkan properti opsional `trailingIcon` pada `TertiaryButton` di `lib/core/widgets/app_button.dart` untuk tombol "See all →".
+   - **Alasan:** Memungkinkan tombol navigasi seksi menampilkan panah di sebelah kanan teks secara konsisten tanpa melanggar touch target minimum 44×44 px dan token tema.
+
+---
+
+## Fase U4a — Pembersihan Elemen Demo, Target Sentuh 44×44, & Eliminasi Duplikasi
+
+1. **Deteksi Mode Fake Gabungan pada `LoginPage`**
+   - **Keputusan:** Pada `LoginPage`, inisialisasi pre-filled credentials dan tampilan catatan demo memeriksa kombinasi `AppConfig.useFakeData || (authController.authRepository is FakeAuthRepository)`.
+   - **Alasan:** Menjamin kredensial otomatis dikosongkan dan catatan demo disembunyikan pada alur nyata/produksi (`AppConfig.useFakeData == false`), sekaligus tetap mendukung test suite (`buildAppProviders(useFakeData: true)`) dan simulasi demo debug secara mulus.
+
+2. **Pembungkusan Bintang Rating dengan Semantics & Target Sentuh 44×44 px**
+   - **Keputusan:** Membungkus setiap bintang rating interaktif di `CollectionBookDetailPage` dengan `SizedBox(width: 44, height: 44)` dan `Semantics(button: true, label: 'Rating $starNum bintang')`. Ukuran ikon tetap proporsional (32 px).
+   - **Alasan:** Mematuhi pedoman aksesibilitas dan touch target minimal 44×44 px (design-system.md §4 & §10) tanpa mengubah proporsi estetika bintang rating Cozy Botanical.
+
+---
+
+## Fase U4b — Standardisasi Komponen Reusable Design System
+
+1. **Komponen `AppDialog` Reusable untuk Konsistensi Tema Terang & Gelap**
+   - **Keputusan:** Membuat widget modal dialog `AppDialog` (`lib/core/widgets/app_dialog.dart`) dengan radius sudut 20 px (`AppSpacing.cardRadius`), warna latar belakang dinamis (`isDark ? AppColors.surfaceDark : AppColors.white`), border neutral/borderDark, serta helper `AppDialog.showConfirm` dengan `TertiaryButton` untuk aksi batal dan konfirmasi.
+   - **Alasan:** Mematuhi PRD §4.5 dan design-system.md §4 mengenai dialog Cozy Botanical agar tidak ada lagi `AlertDialog` bawaan yang mengabaikan tema gelap dan token desain aplikasi.
+
+2. **Perluasan `BookGridCard` dengan Rating, Status Badge, dan Long-Press**
+   - **Keputusan:** Menambahkan properti `rating`, `statusBadge`, dan `onLongPress` pada `BookGridCard` reusable (`lib/core/widgets/book_widgets.dart`) sehingga seluruh kartu item grid di `LibraryPage` dapat langsung menggunakan komponen bersama tanpa kode duplikat.
+   - **Alasan:** Konsistensi desain grid kartu buku di seluruh aplikasi dan mematuhi aturan DRY pada modul pustaka.
+
+3. **Adaptabilitas `AppChip` terhadap Skala Teks 1.3**
+   - **Keputusan:** Mengganti batasan `height: 34` tetap pada `AppChip` menjadi `constraints: BoxConstraints(minHeight: 34)` dan membungkus label teks dengan `Flexible`.
+   - **Alasan:** Mencegah terjadinya RenderFlex overflow horizontal pada chip saran prompt `AiChatPage` ketika diuji pada layar 360 px dengan teks skala 1.3.
+
+---
+
+## Fase U4c — Token Warna Dinamis, Tipografi & Verifikasi Dark Mode
+
+1. **Extension `ThemeContextX` pada `BuildContext` untuk Resolusi Token Tema**
+   - **Keputusan:** Menambahkan extension `ThemeContextX` pada `BuildContext` (`context.isDark`, `context.primaryColor`, `context.inkColor`, `context.surfaceColor`, `context.backgroundColor`, dll.) di `lib/core/theme/app_colors.dart`.
+   - **Alasan:** Menyederhanakan penentuan warna adaptif tema gelap/terang tanpa perlu menulis `Theme.of(context).brightness == Brightness.dark ? AppColors.primaryDark : AppColors.deepTeal` secara berulang dan rawan inkonsistensi.
+
+2. **Kenaikan Ukuran Font Minimum Menjadi 12 px**
+   - **Keputusan:** Menghilangkan seluruh penggunaan `fontSize: 10` dan `fontSize: 11` di codebase (`BookGridCard`, `MainShell`, `ReadingLedgerPage`, `DemoModeChip`), menggantikannya dengan `AppText.caption()` (12 px) atau `AppText.code()` (12 px).
+   - **Alasan:** Memenuhi standar aksesibilitas WCAG dan pedoman keterbacaan tipografi antarmuka ponsel/tablet yang mewajibkan ukuran teks minimal 12 px.
+
+3. **Token Khusus `AppText.gridBookTitle()` & `AppText.code()`**
+   - **Keputusan:** Menyediakan token tipografi `AppText.gridBookTitle()` (Fraunces SemiBold 12 px) untuk judul buku di grid perpustakaan dan `AppText.code()` (JetBrains Mono Regular/Medium 12 px) untuk tampilan string hash kriptografis blockchain di Reading Ledger.
+   - **Alasan:** Memastikan keselarasan hierarki tipografi Cozy Botanical (Fraunces untuk judul buku) dan eliminasi `TextStyle` mentah di widget layar.
+
+---
+
+## Fase U4d — Semantics dan Aksesibilitas Screen Reader
+
+1. **Aksi Semantik Hapus Buku pada `BookGridCard` (`LibraryPage`)**
+   - **Keputusan:** Menambahkan `onLongPressHint: 'Hapus buku'` dan label deskriptif pada `Semantics` pembungkus `BookGridCard` di `lib/core/widgets/book_widgets.dart`.
+   - **Alasan:** Pengguna screen reader (TalkBack / VoiceOver) dapat mengetahui dan mengeksekusi aksi hapus buku yang berbasis gestur tekan lama (long-press) secara langsung melalui menu tindakan aksesibilitas perangkat.
+
+2. **Penggunaan `excludeSemantics: true` pada Tombol dengan Konten Ikon/Teks Campuran**
+   - **Keputusan:** Menerapkan `excludeSemantics: true` pada tombol Jeda di Snake dan avatar profil dengan inisial nama di `FeedbackPage`.
+   - **Alasan:** Mencegah mesin aksesibilitas Flutter menggabungkan (merge) teks child bahasa Inggris seperti "Pause" atau inisial satu huruf dengan label bahasa Indonesia yang telah distandarkan, sehingga pengumuman pembaca layar tetap jernih dan konsisten ("Jeda permainan", "Avatar Budi Santoso").
+
+3. **Pemberian `liveRegion: true` pada Stopwatch Sesi Membaca**
+   - **Keputusan:** Menandai container waktu berjalan di `ReadingTimerPage` dengan `Semantics(label: 'Waktu membaca: $timeFormatted', liveRegion: true)`.
+   - **Alasan:** Mematuhi standar WCAG dan instruksi prompt agar perubahan nilai waktu yang terus berjalan diperbarui secara dinamis ke assistive technology pengguna tanpa mengganggu interaksi lain.
+
+---
+
+## Fase U5 — Pembersihan Token Mentah & Konsistensi Bahasa
+
+1. **Penambahan Token Desain Baru pada `AppSpacing` dan `AppText`**
+   - **Keputusan:** Menambahkan konstanta dimensi terpusat pada `AppSpacing` (`radiusXs`: 4, `radiusS`: 8, `radiusL`: 16, `radius18`: 18, `radius22`: 22, `radiusFull`: 999; `iconXs`: 14, `iconS`: 16, `iconM`: 20, `iconL`: 24, `iconXl`: 32, `iconXxl`: 48; `avatarSmallRadius`: 18, `avatarMediumRadius`: 24, `avatarLargeRadius`: 32, `avatarXLargeRadius`: 46, `avatarContainerSize`: 104, `avatarImageSize`: 96; `biometricCircleSize`: 88) dan tipografi `AppText.displayMedium(fontSize: 36/40)`.
+   - **Alasan:** Mematuhi aturan PRD Bagian 0 dan AGENTS.md ("Semua warna, spacing, radius lewat konstanta tema, bukan angka mentah di widget") tanpa mengubah estetika visual Cozy Botanical yang telah diuji di fase-fase sebelumnya.
+
+2. **Mempertahankan Terminologi Wireframe & Design System (Tanpa Penerjemahan Massal)**
+   - **Keputusan:** Judul halaman utama, label 5 tab navigasi bawah (Home, Library, Tools, Profile, Add Book), dan tombol aksi utama (Currently Reading, My Collection, Start Reading, Add to Collection, Save Review) sengaja dipertahankan dalam bahasa aslinya sesuai `docs/spec/design-system.md` dan `docs/spec/wireframe.md`.
+   - **Alasan:** Mencegah terjadinya regresi (breaking changes) pada struktur navigasi, URL routing, dan puluhan widget test yang menguji keberadaan teks-teks kunci tersebut, sekaligus mematuhi instruksi khusus Fase U5 ("Teks: JANGAN menerjemahkan massal. Judul halaman, label tab navigasi, dan tombol utama tetap seperti di docs/spec/design-system.md dan wireframe.md").
+
+3. **Lokalisasi Format Tanggal `id_ID` dan Hitung Mundur Selesai Membaca**
+   - **Keputusan:** Format tanggal/waktu pada `FeedbackPage` dan `ReadingLedgerPage` distandarkan menggunakan `DateFormat(..., 'id_ID')` dari paket `intl`, dan tombol redirect di `FinishedBookPage` diubah menjadi `"Kembali ke Beranda ($_countdown dtk)"`.
+   - **Alasan:** Memastikan konsistensi pengalaman pengguna lokal Indonesia pada elemen waktu dan alur selesai membaca tanpa mengganggu stabilitas pengujian.
+
+---
+
+## Fase R1 — Konfigurasi, Mode Nyata, dan Startup
+
+1. **Lazy Access `SupabaseClient` pada `SupabaseAuthRepository` & `SupabaseProfileRepository`**
+   - **Keputusan:** Mengakses `Supabase.instance.client` secara malas (lazy getter) melalui properti `get client => _customClient ?? Supabase.instance.client;`, bukan langsung di initializer list konstruktor.
+   - **Alasan:** Menghindari pelemparan `AssertionError` saat pembentukan provider di startup ketika konfigurasi `.env` belum diisi atau ketika aplikasi diarahkan ke `ConfigErrorPage`.
+
+2. **Dukungan Alias `SUPABASE_PUBLISHABLE_KEY` untuk `SUPABASE_ANON_KEY`**
+   - **Keputusan:** Mengizinkan pembacaan key anon Supabase melalui dua alias kunci `.env` (`SUPABASE_ANON_KEY` atau `SUPABASE_PUBLISHABLE_KEY`).
+   - **Alasan:** Fleksibilitas konvensi penamaan Supabase (standar dashboard modern Supabase sering memakai istilah publishable key) tanpa membocorkan nilai ke log.
+
+3. **Penyimpanan Mode Sesi (`real` vs `fake`) di `SecureSessionStore`**
+   - **Keputusan:** Menambahkan field `storyloka_session_mode` di secure storage untuk membedakan sesi demo dan sesi nyata. Sesi fake yang terdeteksi saat `AppConfig.useFakeData == false` langsung dihapus dan diarahkan ke login.
+   - **Alasan:** Mencegah user terjebak pada profil demo ("Demo Reader") saat aplikasi dijalankan di mode produksi nyata.
+
+---
+
+## Fase R2 — Pencarian Buku Hibrida
+
+1. **`CompositeBookSearchRepository` Mengimplementasikan `GoogleBooksRepository`**
+   - **Keputusan:** Kelas `CompositeBookSearchRepository` dideklarasikan dengan `class CompositeBookSearchRepository implements GoogleBooksRepository`.
+   - **Alasan:** Memastikan kompatibilitas backward terhadap pengujian lama (seperti `test/fase_b7_test.dart`) yang mengharapkan `isA<GoogleBooksRepository>()` pada provider `bookSearchRepository`, tanpa mengorbankan abstraksi antarmuka `BookSearchRepository`.
+
+2. **Rate Limiting Sisi Klien untuk Open Library (3 req/detik)**
+   - **Keputusan:** Mengimplementasikan `RateLimiter` sliding-window thread-safe mandiri di `lib/core/services/rate_limiter.dart` yang mengantrekan request jika batas 3 request per 1000 ms terlampaui.
+   - **Alasan:** Mematuhi etika API publik dan panduan Open Library ("max 3 requests/sec") untuk mencegah pemblokiran IP aplikasi pengguna.
+
+3. **Strategi Deduplikasi Hibrida: ISBN-13 dan Judul + Penulis**
+   - **Keputusan:** Deduplikasi hasil pencarian gabungan memprioritaskan kecocokan ISBN-13 yang dinormalisasi (menghapus tanda minus dan spasi). Jika salah satu buku tidak memiliki ISBN, fallback menggunakan kunci normalisasi `judul|penulis` (huruf kecil tanpa spasi berlebih).
+   - **Alasan:** Mencegah buku yang sama muncul ganda dari Google Books dan Open Library, namun tetap mempertahankan buku berbeda yang kebetulan memiliki judul mirip.
+
+4. **Kepatuhan Data Harga: Ketat Hanya dari Google Books `saleInfo`**
+   - **Keputusan:** Open Library tidak menyediakan data harga resmi. Oleh karena itu seluruh hasil dari Open Library memiliki `price: null` dan `currency: null`.
+   - **Alasan:** Mematuhi mandat PRD §7.3 dan instruksi prompt agar tidak mengarang data harga jika tidak tersedia di API resmi.
+
+---
+
+## Fase R3 — Perbaikan AI Chat
+
+1. **Penghapusan Penggantian Model `gemini-1.5-flash`**
+   - **Keputusan:** Menghapus logika di `GeminiChatRepository` yang sebelumnya mengganti nilai `Env.geminiModel` atau `'gemini-flash-latest'` menjadi `'gemini-1.5-flash'`. Model kini menggunakan nilai `Env.geminiModel` apa adanya dengan default resmi `'gemini-flash-latest'`.
+   - **Alasan:** Model `gemini-1.5-flash` telah dihentikan (deprecated/shutdown) oleh Google sehingga menyebabkan error 404 pada panggilan API nyata. Menggunakan `gemini-flash-latest` menjamin kompatibilitas jangka panjang dengan endpoint Google Gemini REST API.
+
+2. **Kunci API Dikirim Eksklusif Melalui Header `x-goog-api-key`**
+   - **Keputusan:** Menghilangkan seluruh pengiriman API key via query parameters URL (`?key=...`) dan mewajibkan pengiriman via header `x-goog-api-key`.
+   - **Alasan:** Mencegah kebocoran rahasia kunci API ke access log server, web proxy, maupun log diagnostik lokal.
+
+3. **Diagnostik Daftar Model Saat Menerima Error 404 (Hanya di Debug Mode)**
+   - **Keputusan:** Saat server mengembalikan kode 404 pada `kDebugMode`, repository secara otomatis memanggil endpoint `https://generativelanguage.googleapis.com/v1beta/models` untuk mendata nama-nama model yang tersedia dan mencetaknya ke konsol debug tanpa mencetak kunci API.
+   - **Alasan:** Mempermudah pengembang dan QA mengidentifikasi model yang aktif tanpa harus memeriksa dashboard Google AI Studio secara manual.
+
+---
+
+## Fase R4 — Integrasi AI Chat DeepSeek + Fallback Gemini
+
+1. **Pola Primary (DeepSeek) dengan Fallback Selektif (Gemini)**
+   - **Keputusan:** Menggunakan `FallbackChatRepository` yang membungkus `DeepSeekChatRepository` sebagai penyedia AI primer dan `GeminiChatRepository` sebagai cadangan. Fallback dipicu pada kegagalan sementara jaringan (timeout), batas kuota/rate limit (HTTP 429), server sibuk (HTTP 5xx), serta saldo akun primer habis (HTTP 402 Insufficient Balance). Error konfigurasi/autentikasi (HTTP 400, 401, 403, 404) tetap dilempar langsung ke UI. Operasi penyimpanan lokal (clear history, fetch messages) selalu didelegasikan ke repository primer.
+   - **Alasan:** Memberikan ketersediaan layanan chat setinggi mungkin. Jika akun DeepSeek baru belum diisi saldo (402), aplikasi secara mulus beralih ke Gemini tanpa mengganggu pengalaman pengguna.
+
+2. **Dukungan Format REST OpenAI-Compatible untuk DeepSeek API**
+   - **Keputusan:** Memanggil langsung endpoint REST DeepSeek (`POST https://api.deepseek.com/chat/completions`) dengan header `Authorization: Bearer <key>`, payload format array `messages` dengan role `system`, `user`, dan `assistant`.
+   - **Alasan:** Menggunakan format OpenAI-compatible resmi DeepSeek tanpa dependensi paket SDK pihak ketiga, menjaga kode tetap ringan dan terkendali.
+
+3. **Penyelarasan Model Default Gemini ke `gemini-3.5-flash-lite`**
+   - **Keputusan:** Memperbarui model fallback default Gemini dari `gemini-2.0-flash-lite` ke `gemini-3.5-flash-lite` di `Env.geminiModel` dan `GeminiChatRepository`.
+   - **Alasan:** Saat diuji langsung terhadap endpoint resmi Google, `gemini-2.0-flash-lite` dan `gemini-2.5-flash` mengembalikan HTTP 404 (*"This model is no longer available. Please update your code to use models/gemini-3.5-flash-lite"*), sedangkan `gemini-3.5-flash-lite` terbukti stabil dan mengembalikan respons HTTP 200 OK.
+
+---
+
+## Fase R4 (Lanjutan) — Audit & Perbaikan Notifikasi (PRD §10.5 & §12)
+
+1. **Penggunaan Native Android Chronometer dengan Waktu Awal Efektif**
+   - **Keputusan:** Notifikasi stopwatch menggunakan `usesChronometer: true`, `ongoing: true`, dan menghitung waktu awal efektif saat resume dengan `when: DateTime.now().subtract(_accumulatedDuration)`.
+   - **Alasan:** Mematuhi mandat PRD dan efisiensi baterai sistem Android agar sistem operasi yang menghitung detik secara native tanpa memicu polling pembaruan notifikasi tiap detik dari Dart thread aplikasi.
+
+2. **Deteksi Zona Waktu Dinamis via `flutter_timezone` dengan Fallback `Asia/Jakarta`**
+   - **Keputusan:** Menggunakan paket `flutter_timezone: ^5.1.1` melalui `(await FlutterTimezone.getLocalTimezone()).identifier` dan menetapkannya ke `tz.setLocalLocation()`. Jika terjadi kegagalan pemanggilan platform channel atau zona tidak ditemukan, sistem otomatis fallback ke `'Asia/Jakarta'`.
+   - **Alasan:** Menjamin keandalan penjadwalan alarm inexact idle di berbagai varian OEM Android (Xiaomi, Samsung, Oppo, dll.) tanpa resiko crash startup `LocationNotFoundException`.
+
+3. **Dialog Penolakan Izin Notifikasi Membuka App Settings via `Geolocator.openAppSettings()`**
+   - **Keputusan:** Saat izin notifikasi ditolak oleh pengguna atau sistem (`areNotificationsEnabled() == false`), toggle switch langsung dikembalikan ke posisi false, dan dialog peringatan Cozy Botanical menampilkan tombol "Buka Pengaturan" yang memanggil `Geolocator.openAppSettings()`.
+   - **Alasan:** Menggunakan platform helper native yang telah terpasang dan teruji di codebase (`geolocator`), memberikan jalur langsung bagi pengguna untuk mengaktifkan izin notifikasi dari halaman setelan aplikasi sistem tanpa dependensi paket izin tambahan.
+
+---
+
+## Fase R6 — Sensor Cahaya Native (Sensor.TYPE_LIGHT) untuk Tema Auto (PRD §10.4)
+
+1. **Implementasi Mandiri Native Android (Sensor.TYPE_LIGHT) Tanpa Paket Eksternal**
+   - **Keputusan:** Tidak menggunakan paket pihak ketiga `light_sensor` (yang mengalami masalah build Gradle/jcenter removal). Sebagai gantinya, mendaftarkan `EventChannel("storyloka/light")` dan `MethodChannel("storyloka/light_status")` langsung di `MainActivity.kt` (`FlutterFragmentActivity`) menggunakan Android `SensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)`.
+   - **Alasan:** Sebelumnya pada Fase B6, sensor cahaya dicatat fallback ke tema sistem dan Gyroscope karena ketiadaan paket. Dengan implementasi native ini, perangkat nyata Android kini memiliki sensor cahaya fisik nyata yang membaca lux lingkungan secara langsung tanpa bloating dependensi.
+
+2. **Manajemen Siklus Hidup Hemat Daya via `WidgetsBindingObserver`**
+   - **Keputusan:** `LightSensorService` mengimplementasikan `WidgetsBindingObserver` untuk memastikan event listener hardware sensor cahaya hanya aktif saat mode Auto dipilih dan aplikasi berada di latar depan (`AppLifecycleState.resumed`). Saat aplikasi dijeda atau diminimalkan (`paused/inactive/detached`), stream sensor langsung di-unregister.
+   - **Alasan:** Menghindari pengurasan daya baterai perangkat saat aplikasi di latar belakang, mematuhi standar performa dan efisiensi energi Android.
+
+3. **Mode Percepatan Debug Hysteresis (1 Detik)**
+   - **Keputusan:** Menambahkan properti `fastHysteresis` pada `LightSensorService` dan kontrol toggle switch khusus di layar Profile (hanya muncul pada `kDebugMode`).
+   - **Alasan:** Pengujian hysteresis normal membutuhkan jendela moving average 3 detik dan jeda minimal 5 detik. Mode debug 1 detik memungkinkan pengembang dan QA memverifikasi transisi Light/Dark secara instan saat menyinari atau menutup sensor fisik perangkat.
+
+
+
+
+
+
+
+
+

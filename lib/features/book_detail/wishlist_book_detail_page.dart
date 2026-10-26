@@ -307,24 +307,14 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
                     const SizedBox(height: AppSpacing.xs),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TextButton(
+                      child: TertiaryButton(
+                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                         onPressed: () {
                           setState(() {
                             _isSynopsisExpanded = !_isSynopsisExpanded;
                           });
                         },
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(50, 30),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                          style: AppText.button(
-                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                            fontSize: 13,
-                          ),
-                        ),
                       ),
                     ),
                   ],

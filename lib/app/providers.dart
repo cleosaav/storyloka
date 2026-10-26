@@ -18,7 +18,9 @@ import '../data/repositories/profile_repository.dart';
 import '../data/repositories/reading_repository.dart';
 import '../data/repositories/remote/exchange_rate_repository.dart';
 import '../data/repositories/remote/gemini_chat_repository.dart';
-import '../data/repositories/remote/google_books_repository.dart';
+import '../data/repositories/remote/deepseek_chat_repository.dart';
+import '../data/repositories/remote/fallback_chat_repository.dart';
+import '../data/repositories/remote/composite_book_search_repository.dart';
 import '../data/repositories/score_repository.dart';
 import '../features/auth/auth_controller.dart';
 import '../core/config/env.dart';
@@ -27,16 +29,29 @@ import '../core/services/light_sensor_service.dart';
 import '../data/database_helper.dart';
 import '../data/repositories/local/local_repositories.dart';
 import '../data/repositories/supabase/supabase_repositories.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/config/startup_status.dart';
 
 /// Konfigurasi aplikasi — PRD §13.0 aturan 3.
 class AppConfig {
   AppConfig._();
 
+  static bool? _overrideUseFakeData;
+
   /// Flag penentu implementasi repository: Fake vs Nyata (SQLite/Supabase).
   /// Default true selama Tahap A; diubah menjadi false pada Fase B7.
-  static const bool useFakeData =
-      bool.fromEnvironment('USE_FAKE', defaultValue: false);
+  static bool get useFakeData =>
+      _overrideUseFakeData ??
+      const bool.fromEnvironment('USE_FAKE', defaultValue: false);
+
+  static set useFakeData(bool value) {
+    _overrideUseFakeData = value;
+  }
+
+  static void resetForTesting() {
+    _overrideUseFakeData = null;
+  }
 }
 
 /// Pengontrol tema dinamis (Light / Dark / System/Auto) — PRD §4.7 & §10.4.
@@ -90,6 +105,7 @@ List<SingleChildWidget> buildAppProviders({
   DatabaseHelper? dbHelper,
   AuthRepository? authRepo,
   ProfileRepository? profileRepo,
+  BookSearchRepository? bookSearchRepo,
   BiometricService? biometricService,
   SupabaseClient? supabaseClient,
 }) {
@@ -108,7 +124,7 @@ List<SingleChildWidget> buildAppProviders({
               ? fakeAuth
               : FakeAuthRepository(sessionStore: sessionStore),
         );
-    final fakeSearch = FakeBookSearchRepository(demoControls: demoControls);
+    final fakeSearch = bookSearchRepo ?? FakeBookSearchRepository(demoControls: demoControls);
     final fakeLibrary = FakeLibraryRepository(demoControls: demoControls);
     final fakeReading = FakeReadingRepository(demoControls: demoControls);
     final fakeLedger = FakeLedgerRepository(demoControls: demoControls);
@@ -166,34 +182,33 @@ List<SingleChildWidget> buildAppProviders({
       sessionStore: sessionStore,
     );
 
-    // Fase B2: Supabase Auth & Profile Repository nyata
+    // Fase B2 & R1: Supabase Auth & Profile Repository NYATA (tanpa fallback diam-diam ke Fake!)
     final realAuth = authRepo ??
-        (Env.isSupabaseConfigured
-            ? SupabaseAuthRepository(
-                client: supabaseClient,
-                sessionStore: sessionStore,
-              )
-            : FakeAuthRepository(sessionStore: sessionStore));
+        SupabaseAuthRepository(
+          client: supabaseClient,
+          sessionStore: sessionStore,
+        );
     final realProfile = profileRepo ??
-        (Env.isSupabaseConfigured
-            ? SupabaseProfileRepository(
-                client: supabaseClient,
-                sessionStore: sessionStore,
-              )
-            : FakeProfileRepository(
-                realAuth is FakeAuthRepository
-                    ? realAuth
-                    : FakeAuthRepository(sessionStore: sessionStore),
-              ));
+        SupabaseProfileRepository(
+          client: supabaseClient,
+          sessionStore: sessionStore,
+        );
 
-    // Fase B3: Google Books API nyata sebagai BookSearchRepository
-    final searchRepo = GoogleBooksRepository();
-    // Fase B5: Kurs nyata (open.er-api.com) & Gemini AI nyata
+    // Fase B3 & R2: Pencarian buku hibrida (Google Books + Open Library)
+    final searchRepo = bookSearchRepo ?? CompositeBookSearchRepository();
+    // Fase B5 & R4: Kurs nyata + AI Chat DeepSeek (primary) → Gemini (fallback)
     final currencyRepo = OpenExchangeRateRepository();
-    final chatRepo = GeminiChatRepository(
-      dbHelper: helper,
-      userIdProvider: () async =>
-          (await sessionStore.getUser())?.id ?? 'default_user',
+    Future<String> userIdProvider() async =>
+        (await sessionStore.getUser())?.id ?? 'default_user';
+    final chatRepo = FallbackChatRepository(
+      primary: DeepSeekChatRepository(
+        dbHelper: helper,
+        userIdProvider: userIdProvider,
+      ),
+      fallback: GeminiChatRepository(
+        dbHelper: helper,
+        userIdProvider: userIdProvider,
+      ),
     );
 
     final authController = AuthController(
@@ -201,6 +216,23 @@ List<SingleChildWidget> buildAppProviders({
       sessionStore: sessionStore,
       demoControls: demoControls,
     );
+
+    // Log debug (kDebugMode saja) — PRD §3 & Fase R1 (tanpa mencetak nilai kunci!)
+    if (kDebugMode) {
+      debugPrint('[StoryLoka Startup] useFakeData: ${AppConfig.useFakeData}');
+      debugPrint('[StoryLoka Startup] Env.isSupabaseConfigured: ${Env.isSupabaseConfigured}');
+      debugPrint('[StoryLoka Startup] Supabase.initialize: ${StartupStatus.instance.statusText}');
+      debugPrint('[StoryLoka Startup] AuthRepository: ${realAuth.runtimeType}');
+      debugPrint('[StoryLoka Startup] ProfileRepository: ${realProfile.runtimeType}');
+      debugPrint('[StoryLoka Startup] BookSearchRepository: ${searchRepo.runtimeType}');
+      debugPrint('[StoryLoka Startup] LibraryRepository: ${localLibrary.runtimeType}');
+      debugPrint('[StoryLoka Startup] ReadingRepository: ${localReading.runtimeType}');
+      debugPrint('[StoryLoka Startup] LedgerRepository: ${localLedger.runtimeType}');
+      debugPrint('[StoryLoka Startup] FeedbackRepository: ${localFeedback.runtimeType}');
+      debugPrint('[StoryLoka Startup] ScoreRepository: ${localScore.runtimeType}');
+      debugPrint('[StoryLoka Startup] ChatRepository: FallbackChatRepository(primary: DeepSeek, fallback: Gemini)');
+      debugPrint('[StoryLoka Startup] CurrencyRepository: ${currencyRepo.runtimeType}');
+    }
 
     return [
       Provider<SecureSessionStore>.value(value: sessionStore),

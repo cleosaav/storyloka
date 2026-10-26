@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../app/providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_dialog.dart';
+import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/progress_and_badge.dart';
 import '../../../data/models/chat_message.dart';
 import '../../../data/repositories/chat_repository.dart';
 import '../auth/auth_controller.dart';
@@ -141,26 +146,13 @@ class _AiChatPageState extends State<AiChatPage> {
   }
 
   Future<void> _confirmClearHistory() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Riwayat Chat?'),
-        content: const Text('Semua percakapan akan dihapus permanen.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
-            ),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
+      title: 'Hapus Riwayat Chat?',
+      message: 'Semua percakapan akan dihapus permanen.',
+      cancelLabel: 'Batal',
+      confirmLabel: 'Hapus',
+      isDestructive: true,
     );
     if (confirmed == true && mounted) {
       final repo = context.read<ChatRepository>();
@@ -180,9 +172,9 @@ class _AiChatPageState extends State<AiChatPage> {
           style: AppText.sectionHeading(color: isDark ? AppColors.inkDark : AppColors.ink)),
         actions: [
           if (_messages.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete_outline_rounded,
-                color: isDark ? AppColors.mutedDark : AppColors.mutedGray),
+            AppIconButton(
+              icon: Icons.delete_outline_rounded,
+              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
               tooltip: 'Hapus riwayat',
               onPressed: _confirmClearHistory,
             ),
@@ -190,17 +182,20 @@ class _AiChatPageState extends State<AiChatPage> {
       ),
       body: Column(
         children: [
-          // Demo banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
-            color: AppColors.sageGreen.withValues(alpha: 0.15),
-            child: Text(
-              'Mode Demo — Balasan tidak menggunakan AI nyata',
-              style: AppText.caption(color: AppColors.deepTeal).copyWith(fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
+          // Demo banner (hanya tampil jika useFakeData)
+          if (AppConfig.useFakeData)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
+              color: AppColors.sageGreen.withValues(alpha: 0.15),
+              child: Text(
+                'Mode Demo — Balasan tidak menggunakan AI nyata',
+                style: AppText.caption(
+                  color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                ).copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
             ),
-          ),
 
           // Daftar pesan / empty state
           Expanded(
@@ -283,7 +278,11 @@ class _Bubble extends StatelessWidget {
             CircleAvatar(
               radius: 16,
               backgroundColor: isDark ? AppColors.surfaceDark : AppColors.palePeach,
-              child: Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.deepTeal),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+              ),
             ),
             const SizedBox(width: AppSpacing.s),
           ],
@@ -295,7 +294,7 @@ class _Bubble extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 color: isUser
-                    ? AppColors.deepTeal
+                    ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
                     : (isDark ? AppColors.surfaceDark : AppColors.palePeach),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
@@ -334,7 +333,11 @@ class _TypingIndicator extends StatelessWidget {
         CircleAvatar(
           radius: 16,
           backgroundColor: isDark ? AppColors.surfaceDark : AppColors.palePeach,
-          child: const Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.deepTeal),
+          child: Icon(
+            Icons.auto_awesome_rounded,
+            size: 16,
+            color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+          ),
         ),
         const SizedBox(width: AppSpacing.s),
         Container(
@@ -406,8 +409,8 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
         child: Container(
           width: 7,
           height: 7,
-          decoration: const BoxDecoration(
-            color: AppColors.deepTeal,
+          decoration: BoxDecoration(
+            color: context.isDark ? AppColors.inkDark : AppColors.deepTeal,
             shape: BoxShape.circle,
           ),
         ),
@@ -444,10 +447,14 @@ class _EmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.palePeach.withValues(alpha: 0.5),
+                color: (isDark ? AppColors.surfaceDark : AppColors.palePeach).withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.auto_awesome_rounded, size: 40, color: AppColors.deepTeal),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 40,
+                color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+              ),
             ),
             const SizedBox(height: AppSpacing.l),
             Text('StoryLoka AI',
@@ -492,22 +499,10 @@ class _SuggestionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppChip(
+      label: label,
+      isSelected: false,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
-          ),
-        ),
-        child: Text(label,
-          style: AppText.caption(
-            color: isDark ? AppColors.inkDark : AppColors.ink,
-          ).copyWith(fontWeight: FontWeight.w500)),
-      ),
     );
   }
 }
@@ -547,61 +542,29 @@ class _InputBar extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-                  borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
-                  border: Border.all(
-                    color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
-                  ),
-                ),
-                child: TextField(
-                  controller: controller,
-                  maxLength: 500,
-                  maxLines: null,
-                  textInputAction: TextInputAction.newline,
-                  style: AppText.body(color: isDark ? AppColors.inkDark : AppColors.ink),
-                  decoration: InputDecoration(
-                    hintText: 'Tanya seputar buku...',
-                    hintStyle: AppText.body(
-                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.l,
-                      vertical: AppSpacing.m,
-                    ),
-                    counterText: '',
-                  ),
-                ),
+              child: AppTextField(
+                controller: controller,
+                hintText: 'Tanya seputar buku...',
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) {
+                  if (controller.text.trim().isNotEmpty && !isSending) {
+                    onSend();
+                  }
+                },
               ),
             ),
-            const SizedBox(width: AppSpacing.m),
+            const SizedBox(width: AppSpacing.s),
             AnimatedBuilder(
               animation: controller,
               builder: (_, _) {
                 final canSend = controller.text.trim().isNotEmpty && !isSending;
-                return IconButton(
+                return AppIconButton(
                   tooltip: 'Kirim pesan',
+                  icon: isSending ? Icons.hourglass_top_rounded : Icons.send_rounded,
+                  color: canSend
+                      ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
+                      : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
                   onPressed: canSend ? onSend : null,
-                  style: IconButton.styleFrom(
-                    backgroundColor: canSend ? AppColors.deepTeal : AppColors.sageGreen.withValues(alpha: 0.3),
-                    foregroundColor: AppColors.white,
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(12),
-                    minimumSize: const Size(48, 48),
-                  ),
-                  icon: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: AppColors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.send_rounded, size: 20),
                 );
               },
             ),

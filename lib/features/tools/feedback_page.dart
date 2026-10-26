@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -112,7 +113,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
           style: AppText.sectionHeading(color: isDark ? AppColors.inkDark : AppColors.ink)),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.deepTeal))
+          ? Center(child: CircularProgressIndicator(color: context.primaryColor))
           : ListView(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.pageMargin,
@@ -239,13 +240,19 @@ class _FeedbackCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: AppColors.sageGreen.withValues(alpha: 0.3),
-                  child: Text(
-                    entry.name.isNotEmpty ? entry.name[0].toUpperCase() : '?',
-                    style: AppText.bodyMedium(color: AppColors.deepTeal)
-                        .copyWith(fontWeight: FontWeight.bold),
+                Semantics(
+                  label: 'Avatar ${entry.name}',
+                  container: true,
+                  excludeSemantics: true,
+                  child: CircleAvatar(
+                    radius: AppSpacing.avatarSmallRadius,
+                    backgroundColor: AppColors.sageGreen.withValues(alpha: 0.3),
+                    child: Text(
+                      entry.name.isNotEmpty ? entry.name[0].toUpperCase() : '?',
+                      style: AppText.bodyMedium(
+                        color: isDark ? AppColors.inkDark : AppColors.deepTeal,
+                      ).copyWith(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.m),
@@ -279,7 +286,11 @@ class _FeedbackCard extends StatelessWidget {
   }
 
   String _formatDate(DateTime dt) {
-    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    try {
+      return DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(dt);
+    } catch (_) {
+      return DateFormat('d MMM yyyy, HH:mm').format(dt);
+    }
   }
 }
 
@@ -295,18 +306,19 @@ class _Row extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 60,
-          child: Text(label,
-            style: AppText.caption(
-              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-            ).copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '$label: ',
+          style: AppText.caption(
+            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+          ).copyWith(fontWeight: FontWeight.w600),
         ),
         Expanded(
-          child: Text(value,
+          child: Text(
+            value,
             style: AppText.body(
               color: isDark ? AppColors.inkDark : AppColors.ink,
-            )),
+            ),
+          ),
         ),
       ],
     );

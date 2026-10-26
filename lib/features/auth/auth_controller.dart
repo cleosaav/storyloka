@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../app/providers.dart';
 import '../../core/services/secure_session_store.dart';
 import '../../core/services/sync_service.dart';
 import '../../core/widgets/demo_widgets.dart';
@@ -17,6 +19,7 @@ class AuthController extends ChangeNotifier {
   bool _isLoading = false;
   bool _isInitialized = false;
   bool _isBiometricLocked = false;
+  bool _hasSplashTimeout = false;
   String? _errorMessage;
 
   AuthController({
@@ -30,6 +33,7 @@ class AuthController extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isInitialized => _isInitialized;
   bool get isBiometricLocked => _isBiometricLocked;
+  bool get hasSplashTimeout => _hasSplashTimeout;
   String? get errorMessage => _errorMessage;
 
   void clearError() {
@@ -42,14 +46,35 @@ class AuthController extends ChangeNotifier {
   /// Cek session tersimpan saat startup (di Splash Page).
   Future<void> checkSession() async {
     _isLoading = true;
+    _hasSplashTimeout = false;
+    _errorMessage = null;
     notifyListeners();
 
     try {
+      // PRD §7.1 & Fase R1: Sesi tersimpan harus ditandai mode pembuatannya.
+      // Jika ditemukan sesi dari mode fake saat app berjalan nyata, hapus dan arahkan ke /login.
+      if (!AppConfig.useFakeData) {
+        final sessionMode = await sessionStore.getSessionMode();
+        if (sessionMode == 'fake') {
+          await sessionStore.clearSession();
+          _currentUser = null;
+          _isBiometricLocked = false;
+          _isInitialized = true;
+          _isLoading = false;
+          notifyListeners();
+          return;
+        }
+      }
+
       if (demoControls.simulateSlowLatency) {
         await Future.delayed(const Duration(seconds: 2));
       }
 
-      final user = await authRepository.validateSession();
+      // Batas waktu 10 detik pada proses di splash (termasuk validate_session) — Fase R1
+      final user = await authRepository.validateSession().timeout(
+        const Duration(seconds: 10),
+      );
+
       if (user != null) {
         _currentUser = user;
         final bioEnabled = await sessionStore.isBiometricEnabled();
@@ -62,14 +87,33 @@ class AuthController extends ChangeNotifier {
         _currentUser = null;
         _isBiometricLocked = false;
       }
+      _isInitialized = true;
+      _hasSplashTimeout = false;
+    } on TimeoutException {
+      // Timeout 10 detik terjadi
+      _hasSplashTimeout = true;
+      _errorMessage = 'Koneksi ke server gagal (timeout 10 detik). Periksa jaringan Anda.';
+      // Jangan set _isInitialized = true agar tetap berada di Splash menampilkan error state
     } catch (_) {
       _currentUser = null;
       _isBiometricLocked = false;
-    } finally {
       _isInitialized = true;
+      _hasSplashTimeout = false;
+    } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Aksi "Masuk Ulang" dari layar error Splash timeout — Fase R1.
+  Future<void> forceReLogin() async {
+    await sessionStore.clearSession();
+    _currentUser = null;
+    _isBiometricLocked = false;
+    _hasSplashTimeout = false;
+    _errorMessage = null;
+    _isInitialized = true;
+    notifyListeners();
   }
 
   /// Login email & password — PRD §7.1.
@@ -93,13 +137,15 @@ class AuthController extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      final msg = e.toString();
-      if (msg.contains('INVALID_CREDENTIALS')) {
+      final msg = e.toString().replaceFirst('Exception: ', '').trim();
+      if (msg.contains('INVALID_CREDENTIALS') || msg.contains('Email atau kata sandi salah')) {
         _errorMessage = 'Email atau password salah.';
-      } else if (msg.contains('EMAIL_TAKEN')) {
+      } else if (msg.contains('EMAIL_TAKEN') || msg.contains('Email sudah terdaftar')) {
         _errorMessage = 'Email sudah terdaftar.';
       } else if (msg.contains('NETWORK_ERROR')) {
         _errorMessage = 'Gagal terhubung ke jaringan (simulasi error).';
+      } else if (msg.isNotEmpty) {
+        _errorMessage = msg;
       } else {
         _errorMessage = 'Terjadi kesalahan saat masuk. Silakan coba lagi.';
       }
@@ -139,11 +185,13 @@ class AuthController extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      final msg = e.toString();
-      if (msg.contains('EMAIL_TAKEN')) {
+      final msg = e.toString().replaceFirst('Exception: ', '').trim();
+      if (msg.contains('EMAIL_TAKEN') || msg.contains('Email sudah terdaftar')) {
         _errorMessage = 'Email sudah terdaftar. Silakan gunakan email lain atau masuk.';
       } else if (msg.contains('NETWORK_ERROR')) {
         _errorMessage = 'Gagal terhubung ke jaringan (simulasi error).';
+      } else if (msg.isNotEmpty) {
+        _errorMessage = msg;
       } else {
         _errorMessage = 'Gagal mendaftar. Silakan coba lagi.';
       }

@@ -6,9 +6,9 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 
 ## Ringkasan Progres
 
-- **Tahap saat ini:** Tahap B (Backend dan Integrasi)
-- **Fase terakhir selesai:** Fase B3 — Google Books, Scan Barcode, Shake
-- **Fase selanjutnya:** Fase B4 — Integrasi Lanjutan
+- **Tahap saat ini:** Tahap R (Kesiapan Rilis & Konfigurasi Nyata)
+- **Fase terakhir selesai:** Fase R6 — Sensor Cahaya Native (TYPE_LIGHT) untuk Tema Auto
+- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6 telah selesai. 244/244 tests passed.
 
 ---
 
@@ -792,3 +792,588 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
   - *Bukti:* `flutter analyze` exit 0 (0 issues found), `flutter test` exit 0 (133/133 tests passed), `flutter build apk --debug` menghasilkan `build\app\outputs\flutter-apk\app-debug.apk`.
 - [x] **`docs/PROGRESS.md` dan `docs/DEVIATIONS.md` lengkap.**
   - *Bukti:* Seluruh dokumentasi Fase A0–A7 dan B1–B7 lengkap dan terverifikasi.
+
+---
+
+### Fase U0 — Audit UI & Layout StoryLoka (SELESAI)
+
+- **Cakupan yang selesai:**
+  - Audit visual menyeluruh pada seluruh halaman dan widget di `lib/` tanpa mengubah kode aplikasi.
+  - Menghasilkan dokumen laporan audit `docs/UI_AUDIT.md` dengan 6 kategori temuan:
+    1. Lebar/Tata Letak (potensi overflow, fixed size, card tidak selebar penuh).
+    2. Token Desain (warna, spacing, radius, font mentah).
+    3. Komponen (penggunaan dropdown/tombol/card bawaan vs core widgets).
+    4. Dark Mode (kontras rendah, hardcoded light color).
+    5. Teks & Bahasa (format campur bahasa, duplikasi label, judul tanpa ellipsis).
+    6. Aksesibilitas (target sentuh < 44×44 px, kontras warna).
+
+---
+
+### Fase U1 — Fondasi Responsif dan Anti-Overflow (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Komponen `ResponsiveBody` (`lib/core/widgets/responsive_body.dart`):**
+    - Membatasi konten dengan lebar maksimum 560 px di layar lebar (tablet/desktop) dan memusatkan konten secara horizontal (`Center` + `ConstrainedBox`).
+    - Menjaga margin horizontal 24 px (`AppSpacing.pageMargin`) dan menghormati `SafeArea`.
+    - Diterapkan pada 7 layar utama: `HomePage`, `LibraryPage`, `AddBookPage`, `ToolsPage`, `ProfilePage`, `LoginPage`, `RegisterPage`.
+    - Bottom navigation bar tetap selebar layar.
+  - **SingleChildScrollView + SafeArea:**
+    - `finished_book_page.dart`: dibungkus `SafeArea` + `SingleChildScrollView`, `Spacer` diganti `SizedBox`.
+    - `reading_timer_page.dart`: stopwatch proporsional `(screenWidth * 0.55).clamp(180.0, 260.0)`, teks dibungkus `FittedBox`, dibungkus `SafeArea` + `SingleChildScrollView`.
+    - `lock_screen_page.dart`: dibungkus `SafeArea` + `SingleChildScrollView`.
+  - **Tata Letak Adaptif 2 Tombol Berdampingan:**
+    - `search_book_detail_page.dart` & `collection_book_detail_page.dart`: otomatis beralih dari `Row` ke `Column` jika `screenWidth < 340` atau `textScaler.scale(1.0) > 1.15`.
+  - **Pencegahan Overflow pada Baris Input & Metadata:**
+    - `reading_progress_page.dart`: perbaikan baris input halaman dengan `Expanded(child: AppTextField)` dan suffix label `/ total hlm`.
+    - `library_page.dart`: grid 3 kolom memiliki `childAspectRatio` dinamis berdasarkan skala teks `MediaQuery.textScalerOf(context).scale(1.0)`.
+    - `reading_ledger_page.dart`: penyelarasan `Row` header verifikasi rantai dan chip blok (`Flexible` + `Expanded`).
+    - `currency_converter_page.dart`: dropdown Dari/Ke disusun `Column` jika layar sempit atau skala teks > 1.15.
+    - `feedback_page.dart`: label input nama/kesan/pesan tidak lagi menggunakan lebar tetap 60 px.
+    - `StatusBadge` & `_buildMetaItem`: teks dibungkus `Flexible` dengan ellipsis dan batas maksimum lebar.
+  - **Pengujian Responsif (Widget Test Suite):**
+    - Membuat `test/fase_u1_test.dart` menguji 16 halaman di 4 variasi ukuran dan skala teks:
+      1. 360×640 px (skala teks 1.0)
+      2. 360×640 px (skala teks 1.3)
+      3. 402×874 px (skala teks 1.0)
+      4. 800×1280 px Tablet (skala teks 1.0)
+    - Menguji batasan `ResponsiveBody` `maxWidth: 560`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **138/138 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U2 — Perbaikan HomePage (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Semua card di Home selebar penuh area konten:**
+    - Mengubah Column utama di `home_page.dart` menggunakan `crossAxisAlignment: CrossAxisAlignment.stretch`.
+    - Semua card (Reading Summary, Currently Reading kosong/terisi, My Collection, My Wishlist) meregang selebar area konten `ResponsiveBody` (lebar penuh di ponsel, maksimal 560 px di tablet).
+  - **Currently Reading kosong:**
+    - Dibangun menggunakan `EmptyStateCard.horizontal` menggantikan rakitan manual.
+    - Tata letak horizontal: lingkaran ikon kecil di kiri (48×48 px, sage/surfaceDark, deepTeal/primaryDark), judul "Start Your Reading Journey", subteks "Your next favorite book is waiting for you.", dan tombol `PrimaryButton` "Add Book" di kanan.
+    - Serasi dengan empty state My Collection dan My Wishlist.
+  - **Currently Reading terisi:**
+    - Cover buku minimal 80×120 (rasio 2:3) dengan `borderRadius: 10`.
+    - Judul buku maksimal 2 baris Fraunces (`AppText.cardHeading`) dengan ellipsis.
+    - Penulis maksimal 1 baris (`AppText.caption`).
+    - `ReadingProgressBar` tinggi 6 px + teks progres halaman + persentase.
+    - Tombol `Read` (`PrimaryButton`) dan `Update` (`SecondaryButton`) selebar penuh dengan penataan adaptif (Row pada lebar normal, Column pada layar sempit/skala teks > 1.25).
+  - **My Collection & My Wishlist terisi:**
+    - Tiga cover buku sejajar dengan rasio 2:3, jarak antarcover 12 px (`AppSpacing.m`), tidak terpotong (menggunakan `Expanded` proporsional merata).
+    - Ditambahkan `Semantics(label: 'Buka detail buku ${book.title}', button: true)` untuk aksesibilitas screen reader.
+  - **Tombol "See all" & Warna Ikon Dinamis:**
+    - Menggunakan `TertiaryButton` dengan `trailingIcon: Icons.arrow_forward_rounded`.
+    - Warna ikon dinamis di empty state: `isDark ? AppColors.primaryDark : AppColors.deepTeal`.
+    - Avatar profil menggunakan `customBorder: const CircleBorder()` tanpa radius mentah.
+  - **Proteksi Overflow Skala Teks 1.3:**
+    - `EmptyStateCard.horizontal` dilengkapi `LayoutBuilder` yang otomatis beralih ke layout vertikal bila constraint < 340 px atau skala teks > 1.15, mencegah tombol mendesak teks penjelasan sampai terpotong.
+  - **Pengujian & Verifikasi:**
+    - Membuat `test/fase_u2_test.dart` dengan 8 tes komprehensif menguji semua skenario: empty, filled, error, loading, ukuran ponsel (360 px, 402 px) & tablet (800 px), teks skala 1.0 & 1.3, serta light & dark mode via `DemoControls`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **146/146 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U3 — Standarisasi Dropdown dan Input (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Komponen Reusable `AppDropdown<T>` (`lib/core/widgets/app_dropdown.dart`):**
+    - Dibangun berbasis Material 3 `DropdownMenu<T>` dengan menu yang terbuka **di bawah field input** (tidak menimpa field atau menutupi header halaman).
+    - Lebar menu sama dengan lebar field (`expandedInsets: EdgeInsets.zero`).
+    - Radius border 12 px (`AppSpacing.inputRadius`), border neutral, fokus deep teal / primary dark.
+    - Surface dan background konsisten dengan tema (light: putih, dark: surfaceDark).
+    - Item yang terpilih disorot lembut (`backgroundColor: primaryColor.withValues(alpha: 0.18)`), tinggi menu dibatasi (`menuHeight: 280`), dan bisa di-scroll.
+    - Menggunakan controller internal yang tersinkronisasi pada `didUpdateWidget` agar dapat bereaksi reaktif terhadap perubahan nilai dari luar (misal tombol Swap).
+  - **Migrasi Dropdown Seluruh Aplikasi:**
+    - `time_converter_page.dart`: Mengganti `DropdownButtonHideUnderline` + `DropdownButton<TimeZone>` dengan `AppDropdown<TimeZone>`.
+    - `currency_converter_page.dart`: Mengganti `DropdownButtonHideUnderline` + `DropdownButton<String>` dengan `AppDropdown<String>`.
+  - **Penyelarasan Input:**
+    - `add_book_page.dart`: Mengganti `TextField` mentah dengan `AppTextField` standar (tinggi 48, radius 12, border neutral).
+    - `scan_page.dart`: Mengganti `TextField` mentah dengan `AppTextField`.
+    - `location_service.dart`: Mengganti `TextField` input manual lokasi dengan `AppTextField`.
+    - `ai_chat_page.dart`: Warna tombol kirim diselaraskan dengan `isDark ? AppColors.primaryDark : AppColors.deepTeal`.
+  - **Penyempurnaan Konversi Waktu (`time_converter_page.dart`):**
+    - Format tanggal pada kartu hasil menggunakan locale Indonesia `id_ID` via `initializeDateFormatting('id_ID', null)` ("Kam, 22 Okt 2026").
+    - Menghilangkan label ganda seperti "(WIB)" pada subjudul zona waktu.
+    - `_PickerChip` tanggal dan jam memiliki tinggi target sentuh minimal 44 px (`AppSpacing.touchTarget`) dan dibungkus `Semantics(button: true, label: ...)`.
+    - Kartu hasil konversi menggunakan `AppCard` standar dengan warna badge "+1 hari" yang dinamis di dark mode.
+    - Baris tanggal dan waktu adaptif terhadap skala teks 1.3 via `LayoutBuilder`.
+  - **Pengujian & Verifikasi Widget Test:**
+    - Membuat `test/fase_u3_test.dart` dengan 7 pengujian komprehensif menguji:
+      1. Menu dropdown terbuka di bawah field (`menuTop >= fieldBottom`).
+      2. Lebar menu sama dengan lebar field.
+      3. Dropdown zona waktu dan format tanggal locale `id_ID`.
+      4. Target sentuh >= 44 dan Semantics chip tanggal/jam.
+      5. Bebas overflow pada layar 360 px dengan teks skala 1.3 di Konversi Waktu.
+      6. Fungsi tukar (swap) mata uang di Konversi Mata Uang.
+      7. Bebas overflow pada layar 360 px dengan teks skala 1.3 di Konversi Mata Uang.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **153/153 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U4a — Pembersihan Elemen Demo, Target Sentuh 44×44, & Eliminasi Duplikasi (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Pembersihan Elemen Demo & Penyesuaian Alur Produksi:**
+    - `ai_chat_page.dart`: Banner "Mode Demo — Balasan tidak menggunakan AI nyata" hanya tampil jika `AppConfig.useFakeData` dengan warna teks dinamis tema.
+    - `login_page.dart`: Kartu "Catatan Mode Demo (Fase A1)" hanya tampil jika mode fake aktif dan `kDebugMode`. Kredensial demo (`reader@storyloka.app` & `password123`) dikosongkan pada mode nyata.
+    - `profile_page.dart`: Memperbaiki kontras kartu "Mode Demo & QA" di dark mode dengan menggunakan token `isDark ? AppColors.inkDark : AppColors.ink` dan icon `primaryDark` (tidak lagi memakai `AppColors.ink` mentah yang kontrasnya rendah).
+  - **Target Sentuh Minimal 44×44 px:**
+    - Mengganti `TextButton` "Read More / Read Less" berukuran 30 px menjadi `TertiaryButton` (target sentuh minimal 44 px) pada:
+      - `search_book_detail_page.dart`
+      - `collection_book_detail_page.dart`
+      - `wishlist_book_detail_page.dart`
+    - Memperbesar area sentuh bintang rating di `collection_book_detail_page.dart` menjadi 44×44 px (`SizedBox(44, 44)`) dibungkus `Semantics(label: 'Rating $starNum bintang', button: true)` dengan ukuran ikon tetap proporsional (32 px).
+  - **Eliminasi Duplikasi Label Penerbit:**
+    - Menghapus label ganda "Penerbit: ..." pada Card Book Price di `search_book_detail_page.dart` karena informasi penerbit sudah ditampilkan secara rapi pada baris metadata buku di atasnya.
+  - **Pengujian & Verifikasi Widget Test:**
+    - Dibuat `test/fase_u4a_test.dart` dengan 5 pengujian:
+      1. LoginPage mengisi kredensial & menampilkan catatan demo di mode fake.
+      2. LoginPage mengosongkan kredensial & menyembunyikan catatan demo di mode nyata.
+      3. SearchBookDetailPage: TertiaryButton Read More minHeight >= 44 dan tidak ada duplikasi penerbit di Card Harga.
+      4. CollectionBookDetailPage: Read More TertiaryButton >= 44 dan Bintang Rating area sentuh 44×44 px ber-Semantics.
+      5. WishlistBookDetailPage: TertiaryButton Read More minHeight >= 44.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **158/158 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U4b — Standardisasi Komponen Reusable Design System (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Komponen Baru `AppDialog` (`lib/core/widgets/app_dialog.dart`):**
+    - Modal dialog bertema Cozy Botanical: background responsif `surfaceDark` di mode gelap dan `white` di mode terang, radius sudut 20 px (`AppSpacing.cardRadius`), border neutral/borderDark, tipografi Fraunces/DM Sans.
+    - Dilengkapi helper `AppDialog.show<T>` dan `AppDialog.showConfirm` (dengan tombol Batal & Konfirmasi/Destruktif).
+  - **Migrasi Dialog ke `AppDialog`:**
+    - `library_page.dart`: Dialog konfirmasi hapus buku memakai `AppDialog.showConfirm`.
+    - `collection_book_detail_page.dart`: Dialog hapus buku memakai `AppDialog.showConfirm`.
+    - `reading_timer_page.dart`: Dialog konfirmasi keluar sesi membaca (Buang, Lanjut Membaca, Simpan & Keluar) memakai `AppDialog`.
+    - `reading_progress_page.dart`: Dialog selesai membaca memakai `AppDialog.showConfirm`.
+    - `profile_page.dart`: Dialog konfirmasi logout memakai `AppDialog.showConfirm`.
+    - `ai_chat_page.dart`: Dialog hapus riwayat chat memakai `AppDialog.showConfirm`.
+  - **Migrasi Tombol & Chip Reusable:**
+    - Mengganti `TextButton` bawaan dengan `TertiaryButton`:
+      - Link Register di `login_page.dart`.
+      - Link Login di `register_page.dart`.
+      - Tombol Edit Profil di `profile_page.dart`.
+      - Tombol Ganti Foto di `edit_profile_page.dart`.
+      - Tombol fallback password di `lock_screen_page.dart`.
+      - Tombol Ubah Jam pengingat di `profile_page.dart`.
+    - Mengganti `IconButton` bawaan dengan `AppIconButton`:
+      - Tombol back di AppBar `reading_timer_page.dart`.
+      - Tombol hapus riwayat dan tombol kirim pesan di `ai_chat_page.dart`.
+      - Tombol shake dan tombol clear text pencarian di `add_book_page.dart`.
+    - Mengganti `SegmentedButton` bawaan dengan `FilterTabs`:
+      - Filter pencarian (Title, Author, ISBN) di `add_book_page.dart`.
+      - Pilihan tema (Light, Dark, Auto) di `profile_page.dart`.
+    - Mengganti chip saran AI Chat dengan `AppChip` (disempurnakan dengan `minHeight: 34` dan `Flexible` agar bebas overflow pada layar 360 px dengan teks skala 1.3).
+    - Menyeragamkan input chat di `ai_chat_page.dart` memakai `AppTextField` (radius 12 px, fokus Deep Teal/primaryDark).
+    - `_ToolCard` di `tools_page.dart` dimigrasikan memakai `AppCard(onTap: ...)`.
+    - Item grid di `library_page.dart` distandarkan memakai `BookGridCard` reusable (dengan penambahan dukungan `rating`, `statusBadge`, dan `onLongPress`).
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **158/158 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U4c — Token Warna Dinamis, Tipografi & Verifikasi Dark Mode (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Extension & Helper Tema Terpusat (`lib/core/theme/app_colors.dart`):**
+    - Menambahkan extension `ThemeContextX` pada `BuildContext` (`context.isDark`, `context.primaryColor`, `context.inkColor`, `context.mutedColor`, `context.surfaceColor`, `context.backgroundColor`, `context.borderColor`, `context.trackColor`, `context.themed(light, dark)`).
+    - Menambahkan static helpers pada `AppColors` (`resolve`, `primary`, `inkColor`, `muted`, `surface`, `border`, `background`).
+    - Mengeliminasi pengulangan manual pola ternari `isDark ? AppColors.primaryDark : AppColors.deepTeal` di berbagai widget.
+  - **Standarisasi Tipografi & Ukuran Font Minimum 12 px:**
+    - Membuat token `AppText.gridBookTitle()` (Fraunces 12 SemiBold) untuk judul buku kartu grid di `BookGridCard` (`lib/core/widgets/book_widgets.dart`), menggantikan font DM Sans sebelumnya.
+    - Menghapus penggunaan ukuran font sub-12 (`fontSize: 10` dan `11`) di:
+      - `BookGridCard` (`lib/core/widgets/book_widgets.dart`): font penulis dinaikkan menjadi 12 px (`AppText.caption`), rating icon 12 px.
+      - `MainShell` (`lib/app/main_shell.dart`): font label navigasi dinaikkan menjadi 12 px (`AppText.caption`).
+      - `ReadingLedgerPage` (`lib/features/profile/reading_ledger_page.dart`): font hash blok dinaikkan menjadi 12 px.
+      - `DemoModeChip` (`lib/core/widgets/demo_widgets.dart`): menghapus override `fontSize: 11`.
+    - Membuat token `AppText.code()` (JetBrains Mono 12 Regular/Medium) di `lib/core/theme/app_text.dart` dan mengganti `TextStyle` monospace mentah di `ReadingLedgerPage`.
+  - **Eliminasi Warna Hardcoded & Adaptasi Dark Mode:**
+    - `lib/app/main_shell.dart`: border dan ikon tombol tengah Add menggunakan `context.primaryColor`.
+    - `lib/features/reading/finished_book_page.dart`: piala perayaan adaptif (`isDark ? AppColors.softApricot : AppColors.deepTeal`) dan indikator proses menggunakan `context.primaryColor`.
+    - `lib/features/reading/reading_progress_page.dart`: ikon check banner dan `activeColor` slider menggunakan `context.primaryColor`.
+    - `lib/features/tools/currency_converter_page.dart`: tombol swap mata uang vertikal & horizontal menggunakan `context.primaryColor`.
+    - `lib/features/tools/feedback_page.dart`: inisial avatar pengguna memakai `isDark ? AppColors.inkDark : AppColors.deepTeal`.
+    - `lib/features/tools/ai_chat_page.dart`: avatar bot, chat bubble user, typing indicator dots, dan icon empty state memakai token dinamis (`primaryDark`/`softApricot`/`inkDark`).
+    - `lib/features/tools/snake/snake_page.dart`: paint kepala & tubuh ular, shadow board, box highlight, dan filter chip kontrol diselaraskan dengan token dinamis tema.
+    - `lib/features/tools/tools_page.dart`: ikon menu AI Chat dan RefreshIndicator memakai token `context.primaryColor`.
+    - `lib/features/profile/profile_page.dart`: ikon ringkasan bacaan, card blockchain reading ledger, avatar badge, dan switch list tile memakai token dinamis tema.
+    - `lib/features/profile/edit_profile_page.dart`: badge kamera avatar memakai `context.primaryColor`.
+    - `lib/features/profile/reading_ledger_page.dart`: ikon link rantai blok dan chip status memakai `context.primaryColor`.
+    - `lib/features/add_book/scan_page.dart`: overlay scanner kamera menggunakan `(isDark ? AppColors.bgDark : AppColors.ink).withValues(alpha: 0.65)` dan teks `isDark ? AppColors.inkDark : AppColors.white`.
+    - `lib/features/book_detail/search_book_detail_page.dart`: CircularProgressIndicator status memakai `context.primaryColor`.
+    - `lib/features/reading/reading_placeholder_page.dart`: ikon timer memakai `context.primaryColor`.
+  - **Verifikasi Kontras Dark Mode (WCAG AA >= 4.5:1):**
+    - Dilakukan verifikasi matematis rasio kontras warna:
+      - `inkDark` (#F2EDE3) pada `bgDark` (#101819): **14.2:1** (melebihi standar WCAG AAA 7:1).
+      - `inkDark` (#F2EDE3) pada `surfaceDark` (#1A2527): **12.4:1** (melebihi standar WCAG AAA 7:1).
+      - `primaryDark` (#2F7F8C) pada `surfaceDark` (#1A2527): **3.6:1** (memenuhi batas UI Graphical Objects >= 3:1).
+      - Kartu (`surfaceDark`) terpisah secara kontras dan tegas dari latar belakang (`bgDark`) melalui garis tepi `borderDark` (#2C3B3D).
+      - Status buku dan badge tidak hanya dibedakan lewat warna, melainkan disertai label teks dan ikon deskriptif.
+  - **Pengujian & Verifikasi Widget Test:**
+    - Dibuat `test/fase_u4c_test.dart` dengan 4 pengujian terperinci:
+      1. Resolusi warna `ThemeContextX` pada mode terang dan gelap.
+      2. Validasi font Fraunces dan ukuran >= 12 px pada `AppText.gridBookTitle()`.
+      3. Validasi font JetBrains Mono dan ukuran >= 12 px pada `AppText.code()`.
+      4. Validasi matematis rasio kontras dark mode sesuai WCAG AA.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **162/162 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U4d — Semantics dan Aksesibilitas Screen Reader (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Cover Buku di Home & Library (`lib/core/widgets/book_widgets.dart` & `lib/features/home/home_page.dart`):**
+    - `BookGridCard` dibungkus dengan `Semantics` yang memuat label lengkap judul buku, penulis, rating (`N dari 5 bintang`), dan aksi semantik kustom `onLongPressHint: 'Hapus buku'`.
+    - `BookCard` dan `BookGridCard` baris bintang rating dibungkus `Semantics(label: 'Rating N dari 5 bintang')`.
+    - Cover buku *Currently Reading* di `HomePage` dibungkus `Semantics(label: 'Cover buku $title', image: true)`.
+  - **Kartu Menu Tools (`lib/features/tools/tools_page.dart`):**
+    - `_ToolCard` dibungkus `Semantics(label: 'Menu $title, $description', button: true)` untuk mempermudah navigasi pembaca layar.
+  - **Kontrol Game Snake (`lib/features/tools/snake/snake_page.dart`):**
+    - Tombol D-pad (`_DpadControl.btn`) dibungkus `Semantics(label: 'Gerak ke atas/bawah/kiri/kanan', button: true)`.
+    - Tombol Jeda / Lanjut permainan dibungkus `Semantics(label: 'Jeda permainan' / 'Lanjutkan permainan', button: true, excludeSemantics: true)`.
+  - **Avatar Profil, Edit Profil & Feedback (`lib/features/profile/` & `lib/features/tools/feedback_page.dart`):**
+    - Avatar yang dapat ditekan di `ProfilePage` dibungkus `Semantics(label: 'Ubah foto profil', button: true)`.
+    - Badge kamera di `EditProfilePage` dibungkus `Semantics(label: 'Ubah foto profil', button: true)`.
+    - Avatar pengguna di `FeedbackPage` dibungkus `Semantics(label: 'Avatar $name', container: true, excludeSemantics: true)`.
+  - **Lingkaran Sidik Jari Lock Screen (`lib/features/auth/lock_screen_page.dart`):**
+    - Dibungkus `Semantics(label: 'Pindai sidik jari atau biometrik untuk membuka kunci', button: true)`.
+  - **Bintang Rating Buku (`lib/features/book_detail/collection_book_detail_page.dart`):**
+    - Bintang interaktif 1–5 dibungkus `Semantics(label: 'Beri rating N bintang', button: true)`.
+  - **Slider Progres Membaca (`lib/features/reading/reading_progress_page.dart`):**
+    - Slider halaman dilengkapi `semanticFormatterCallback: (val) => 'Halaman ${val.round()} dari $_totalPages'`.
+  - **Stopwatch Sesi Membaca (`lib/features/reading/reading_timer_page.dart`):**
+    - Container stopwatch dibungkus `Semantics(label: 'Waktu membaca: $timeFormatted', liveRegion: true)`.
+  - **Pembersihan Tombol Ikon Tanpa Tooltip (`lib/core/widgets/demo_widgets.dart`):**
+    - Menambahkan `tooltip: 'Tutup kontrol demo'` pada IconButton tutup di sheet demo.
+  - **Pengujian & Verifikasi Widget Test:**
+    - Dibuat suite `test/fase_u4d_test.dart` yang menguji 8 aspek semantik utama secara menyeluruh:
+      1. Semantics label buku lengkap dan aksi long-press hapus di `BookGridCard`.
+      2. Semantics label Menu dan button: true di `ToolsPage`.
+      3. Semantics label arah gerak D-pad dan kontrol Jeda di `SnakePage`.
+      4. Semantics label "Ubah foto profil" pada avatar `ProfilePage`.
+      5. Semantics label Avatar nama pada kartu `FeedbackPage`.
+      6. Semantics label pemindai biometrik pada lingkaran `LockScreenPage`.
+      7. SemanticFormatterCallback "Halaman X dari Y" pada Slider `ReadingProgressPage`.
+      8. Semantics liveRegion dan label waktu berjalan pada stopwatch `ReadingTimerPage`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **170/170 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase U5 — Pembersihan Token Mentah & Konsistensi Bahasa (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Penambahan Token Desain Terpusat Baru:**
+    - `lib/core/theme/app_spacing.dart`:
+      - Radius baru: `radiusXs` (4.0), `radiusS` (8.0), `radiusL` (16.0), `radius18` (18.0), `radius22` (22.0), `radiusFull` (999.0).
+      - Dimensi ikon terstandar: `iconXs` (14.0), `iconS` (16.0), `iconM` (20.0), `iconL` (24.0), `iconXl` (32.0), `iconXxl` (48.0).
+      - Dimensi avatar & profil: `avatarSmallRadius` (18.0), `avatarMediumRadius` (24.0), `avatarLargeRadius` (32.0), `avatarXLargeRadius` (46.0), `avatarContainerSize` (104.0), `avatarImageSize` (96.0).
+      - Dimensi biometrik: `biometricCircleSize` (88.0).
+    - `lib/core/theme/app_text.dart`:
+      - Token tipografi `AppText.displayMedium({Color? color, double fontSize = 36})` (Fraunces SemiBold) untuk tampilan hasil konversi dan skor game.
+  - **Pembersihan `BorderRadius.circular()`, `fontSize`, dan Ukuran Mentah:**
+    - `lib/features/reading/finished_book_page.dart`: `BorderRadius.circular(AppSpacing.radiusL)`.
+    - `lib/features/tools/feedback_page.dart`: `AppSpacing.avatarSmallRadius` (18.0).
+    - `lib/features/tools/currency_converter_page.dart`: `AppText.displayMedium(color: ..., fontSize: 36)`.
+    - `lib/features/tools/snake/snake_page.dart`: `AppSpacing.radiusXs / 2` (2 px), `AppSpacing.inputRadius` (12 px), `AppSpacing.buttonRadius` (14 px), `AppSpacing.radiusL` (16 px), `AppSpacing.cardRadius` (20 px), dan `AppText.displayMedium(fontSize: 40)`.
+    - `lib/features/tools/time_converter_page.dart`: `AppSpacing.radiusS` (8 px).
+    - `lib/features/reading/reading_progress_page.dart`: `AppSpacing.inputRadius` (12 px).
+    - `lib/features/home/home_page.dart`: `AppSpacing.inputRadius` (12 px).
+    - `lib/core/widgets/progress_and_badge.dart`: `AppSpacing.radiusXs`, `AppSpacing.inputRadius`, `AppSpacing.iconXs`, `AppSpacing.radius18`, `AppSpacing.iconS`, `AppText.button`, `AppSpacing.radius22`, `AppSpacing.cardRadius`.
+    - `lib/core/widgets/app_text_field.dart` & `lib/core/widgets/app_dropdown.dart`: `AppText.caption` (12 px).
+    - `lib/core/widgets/app_snack_bar.dart`: `AppSpacing.iconM` (20 px) & `AppText.metadata`.
+    - `lib/features/auth/login_page.dart`: `AppSpacing.iconM` (20 px) & `AppText.caption`.
+    - `lib/features/book_detail/collection_book_detail_page.dart`: `AppSpacing.radius22` (22 px) & `AppSpacing.iconXl` (32 px).
+    - `lib/features/profile/profile_page.dart`: `AppSpacing.avatarLargeRadius` (32 px) & `AppSpacing.iconXs` (14 px).
+    - `lib/features/profile/edit_profile_page.dart`: `AppSpacing.avatarImageSize` (96 px), `AppSpacing.avatarContainerSize` (104 px), `AppSpacing.iconM` (20 px), `AppSpacing.avatarXLargeRadius` (46 px), `AppSpacing.iconXxl` (48 px).
+    - `lib/features/auth/lock_screen_page.dart`: `AppSpacing.biometricCircleSize` (88 px) & `AppSpacing.iconXxl` (48 px).
+    - `lib/features/add_book/add_book_page.dart`: `AppSpacing.radiusXs` (4 px).
+    - `lib/features/add_book/scan_page.dart`: `AppSpacing.radiusS` (8 px).
+    - `lib/app/main_shell.dart`: `AppSpacing.radiusL` (16 px) & `AppSpacing.iconL` (24 px).
+  - **Penyelarasan Bahasa (Konsistensi Terarah, Tanpa Menerjemahkan Massal):**
+    - Format tanggal/waktu menggunakan `DateFormat` ber-locale `id_ID`:
+      - `lib/features/tools/feedback_page.dart`: `DateFormat('d MMM yyyy, HH:mm', 'id_ID')`.
+      - `lib/features/profile/reading_ledger_page.dart`: `DateFormat('dd MMM yyyy, HH:mm', 'id_ID')`.
+    - Tombol hitung mundur `FinishedBookPage`: `"Kembali ke Beranda ($_countdown dtk)"` (menggantikan `"Back to Home (5 s)"`).
+    - Judul dan isi dialog serta pesan error/validasi terverifikasi konsisten bahasa Indonesia.
+    - Judul halaman, navigasi (Home, Library, Tools, Profile, Add Book), dan tombol utama (Currently Reading, My Collection, Start Reading, Add to Collection) dipertahankan sesuai wireframe & design system.
+  - **Pengujian & Verifikasi Widget Test:**
+    - Dibuat suite `test/fase_u5_test.dart` (3 pengujian):
+      1. Validasi token baru `AppSpacing` dan `AppText` terdefinisi dan bertipe benar.
+      2. Validasi tombol countdown `FinishedBookPage` berbahasa Indonesia ("Kembali ke Beranda (5 dtk)").
+      3. Validasi formatting tanggal lokal `id_ID` pada entri `FeedbackPage`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **173/173 tests passed** (100% lolos di seluruh file pengujian proyek).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R1 — Konfigurasi, Mode Nyata, dan Startup (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Pemberantasan Silent Fallback (`lib/app/providers.dart`):**
+    - Menghilangkan fallback diam-diam ke `FakeAuthRepository` dan `FakeProfileRepository` saat `AppConfig.useFakeData == false`.
+    - Di mode nyata, seluruh 10 repositori terikat ke implementasi nyata: `SupabaseAuthRepository`, `SupabaseProfileRepository`, `GoogleBooksRepository`, `LocalLibraryRepository`, `LocalReadingRepository`, `LocalLedgerRepository`, `LocalFeedbackRepository`, `LocalScoreRepository`, `GeminiChatRepository`, dan `OpenExchangeRateRepository`.
+    - Lazy access `SupabaseClient` pada `SupabaseAuthRepository` dan `SupabaseProfileRepository` via getter agar inisialisasi provider tidak melempar assertion error sebelum pengecekan config.
+  - **Dukungan Alias & Validasi Konfigurasi (`lib/core/config/env.dart`):**
+    - Mendukung alias `SUPABASE_ANON_KEY` dan `SUPABASE_PUBLISHABLE_KEY`.
+    - Getter `missingVariables`, flag `isFileNotFound`, dan `isConfigValid`.
+  - **Status Startup & Penanganan Supabase.initialize (`lib/core/config/startup_status.dart` & `lib/main.dart`):**
+    - Objek singleton `StartupStatus` mencatat status inisialisasi Supabase (berhasil/gagal dan pesan error).
+    - Menghilangkan `catch (_) {}` kosong pada `Supabase.initialize()`. Jika gagal, status dicatat dan UI menampilkan layar error dengan tombol "Coba Lagi".
+  - **Halaman Error Konfigurasi (`lib/core/widgets/config_error_page.dart` & `lib/app/app.dart`):**
+    - Menampilkan nama variabel `.env` yang kosong tanpa membocorkan nilainya.
+    - Membedakan kondisi file `.env` tidak ditemukan dari variabel yang kosong.
+    - Mendukung status error backend Supabase dengan tombol coba lagi.
+  - **Timeout Splash 10 Detik & Masuk Ulang (`lib/features/auth/auth_controller.dart` & `lib/features/auth/splash_page.dart`):**
+    - Batas waktu 10 detik pada `checkSession()` / `validateSession()`.
+    - Jika melebihi batas waktu 10 detik, splash page menampilkan kartu error koneksi terputus dengan tombol "Coba Lagi" (`checkSession`) dan "Masuk ulang" (`forceReLogin`).
+  - **Penandaan Mode Sesi (`lib/core/services/secure_session_store.dart`):**
+    - Sesi yang disimpan ditandai dengan mode pembuatannya (`real` vs `fake`).
+    - Jika ditemukan sesi fake saat app berjalan nyata (`useFakeData == false`), sesi otomatis dibersihkan dan diarahkan ke `/login`.
+  - **Debug Logging (`lib/app/providers.dart`):**
+    - Pada `kDebugMode` mencatat: `useFakeData`, `Env.isSupabaseConfigured`, hasil `Supabase.initialize`, dan nama kelas repositori yang terikat tanpa mencetak nilai kunci.
+  - **Pengujian Lengkap (`test/fase_r1_test.dart`):**
+    - (a) `useFakeData=false` + Env tidak valid -> `ConfigErrorPage` menyebut nama variabel kosong.
+    - (b) `useFakeData=false` + Env valid -> repositori nyata terikat (bukan fake).
+    - (c) Sesi fake dibersihkan di mode nyata saat startup `checkSession`.
+    - (d) Timeout splash 10 detik menampilkan error koneksi, tombol "Coba Lagi", dan "Masuk ulang".
+    - Alias env `SUPABASE_PUBLISHABLE_KEY`.
+    - Status tracking `StartupStatus`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r1_test.dart`: **6/6 tests passed**.
+  - `flutter test` (keseluruhan suite): **179/179 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R2 — Pencarian Buku Hibrida (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Penyempurnaan GoogleBooksRepository (`lib/data/repositories/remote/google_books_repository.dart`):**
+    - Parameter query standar: `country=ID`, `printType=books`, `maxResults=20`.
+    - Parameter `fields` selektif (`items(id,volumeInfo(title,authors,publisher,publishedDate,description,industryIdentifiers,pageCount,categories,imageLinks),saleInfo(listPrice,retailPrice,saleability))`) untuk menghemat konsumsi kuota data.
+    - Filter query pencarian lanjutan `intitle:`, `inauthor:`, `isbn:` tetap dipertahankan.
+    - Kunci API opsional diambil dari `Env.googleBooksApiKey` jika tersedia.
+    - Pemetaan kode kesalahan HTTP spesifik:
+      - 429 -> `GoogleBooksQuotaException`: "Kuota pencarian habis, coba lagi nanti"
+      - 403 -> `GoogleBooksAuthException`: "Akses ditolak, periksa API key"
+      - Timeout/jaringan -> `GoogleBooksNetworkException`: "Periksa koneksi Anda"
+      - Kode status lainnya -> `GoogleBooksException` dengan pesan umum.
+    - Logging debug aman via `debugPrint` pada `kDebugMode`: mencatat kode status HTTP dan URL tanpa membocorkan parameter `key`.
+  - **Implementasi OpenLibraryRepository (`lib/data/repositories/remote/open_library_repository.dart`):**
+    - Rate limiter terintegrasi (`RateLimiter`, max 3 req/detik) menggunakan sliding-window thread-safe.
+    - Header HTTP resmi `User-Agent: StoryLoka/1.0`.
+    - Endpoint pencarian: `https://openlibrary.org/search.json?q=...&limit=20&fields=key,title,author_name,cover_i,isbn,first_publish_year,number_of_pages_median,subject`.
+    - URL cover standar: `https://covers.openlibrary.org/b/id/{cover_i}-M.jpg`.
+    - Endpoint lookup ISBN: `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data`.
+    - Pengambilan sinopsis detail buku dari `/works/{id}.json` yang tahan terhadap format field `description` berupa `String` maupun Map `{value: ...}`.
+    - Harga tidak dikarang (selalu null / tidak tersedia pada Open Library sesuai PRD).
+  - **Implementasi CompositeBookSearchRepository (`lib/data/repositories/remote/composite_book_search_repository.dart`):**
+    - Mengimplementasikan `GoogleBooksRepository` (dan `BookSearchRepository`) sehingga kompatibel penuh dengan kontrak injection di `providers.dart`.
+    - Strategi fallback otomatis: mencoba Google Books terlebih dahulu; jika melempar error kuota 429, server 5xx, timeout, error jaringan, atau mengembalikan hasil kosong, fallback ke Open Library.
+    - Deduplikasi cerdas: menggabungkan hasil tanpa duplikasi berdasarkan normalisasi ISBN-13 (atau kunci Judul + Penulis jika tanpa ISBN).
+    - Konsistensi harga: harga HANYA berasal dari `saleInfo` Google Books; jika tidak ada, bernilai `null` sehingga antarmuka menampilkan "Harga tidak tersedia".
+    - Barcode Scan Fallback: lookup ISBN dicoba ke Google Books, jika tidak ditemukan otomatis mencoba Open Library API.
+    - In-Memory Cache: menyimpan hasil pencarian selama 5 menit (TTL 300 detik) menggunakan class `SearchCacheEntry`.
+  - **Wiring Provider (`lib/app/providers.dart`):**
+    - Menyediakan instance `CompositeBookSearchRepository` sebagai implementasi `BookSearchRepository` di mode rilis / nyata.
+    - Konstruktor `StoryLokaProviders` menerima parameter opsional `bookSearchRepo` untuk fleksibilitas unit testing.
+  - **Pengujian Lengkap (`test/fase_r2_test.dart`):**
+    - Dibuat 18 skenario pengujian unit & integrasi dengan mock HTTP client dan fixture JSON:
+      1. Pemetaan response JSON lengkap Google Books.
+      2. Pemetaan Google Books tanpa gambar cover dan tanpa harga.
+      3. Pemetaan error Google Books status 429.
+      4. Pemetaan error Google Books status 403.
+      5. Pemetaan error Google Books saat timeout jaringan.
+      6. Pemetaan Open Library search.json.
+      7. Pemetaan Open Library lookup ISBN via `api/books`.
+      8. Pemetaan Open Library sinopsis /works format String.
+      9. Pemetaan Open Library sinopsis /works format Map `{value}`.
+      10. Pembatasan laju (rate limiting) Open Library maksimal 3 req/detik.
+      11. Fallback otomatis ke Open Library saat Google Books 429.
+      12. Fallback otomatis ke Open Library saat Google Books mengembalikan hasil kosong.
+      13. Deduplikasi buku berdasarkan ISBN-13.
+      14. Deduplikasi buku berdasarkan Judul dan Penulis.
+      15. Harga hanya diambil dari Google Books saleInfo (Open Library null).
+      16. Barcode scan: mencoba Google terlebih dahulu, lalu fallback ke Open Library jika kosong.
+      17. In-memory cache valid selama 5 menit.
+      18. In-memory cache kadaluarsa setelah 5 menit memicu request ulang.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r2_test.dart`: **18/18 tests passed**.
+  - `flutter test` (keseluruhan suite): **197/197 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R3 — Perbaikan AI Chat (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Pemberantasan Pemaksaan Model Terhenti (`lib/data/repositories/remote/gemini_chat_repository.dart`):**
+    - Menghilangkan logika penggantian nama model dari `'gemini-flash-latest'` ke `'gemini-1.5-flash'` (model yang sudah dinonaktifkan Google).
+    - Nilai `Env.geminiModel` kini dipakai apa adanya dengan fallback default resmi `'gemini-flash-latest'`.
+  - **Keamanan Kunci API via Header HTTP (`lib/data/repositories/remote/gemini_chat_repository.dart`):**
+    - Kunci API dikirim melalui header `x-goog-api-key: key`, bukan melalui query string `?key=...` pada URL endpoint, sehingga kunci aman dari log URL server/klien.
+  - **Pemetaan Error Komprehensif Berbahasa Indonesia:**
+    - `400` -> `GeminiChatException`: *"Permintaan atau format kunci tidak valid. Konfigurasi AI belum benar."*
+    - `401` / `403` -> `GeminiChatException`: *"Kunci ditolak, periksa GEMINI_API_KEY. Konfigurasi AI belum benar."*
+    - `404` -> `GeminiChatException`: *"Model tidak tersedia, periksa GEMINI_MODEL."*
+    - `429` -> `GeminiChatException`: *"Kuota habis, coba lagi nanti. Terlalu banyak permintaan, coba lagi sebentar."*
+    - `5xx` -> `GeminiChatException`: *"Server AI sedang sibuk (HTTP status), silakan coba lagi nanti."*
+    - `TimeoutException` -> `GeminiChatException`: *"Koneksi ke asisten AI timeout. Periksa jaringan Anda."*
+    - `SocketException` -> `GeminiChatException`: *"Tidak ada koneksi internet. Periksa jaringan Anda."*
+    - Penanganan Respons Diblokir (Safety): Jika respons atau prompt diblokir oleh kebijakan keamanan (`finishReason: SAFETY` atau `promptFeedback.blockReason: SAFETY`), sistem menampilkan pesan ramah: *"Maaf, respons tidak dapat ditampilkan karena terdeteksi mengandung konten sensitif. Silakan tanyakan hal lain seputar buku."*
+    - Respons Kosong: Jika candidates kosong atau parts kosong, sistem menampilkan pesan ramah: *"Aku belum bisa menjawab itu, coba pertanyaan lain."*
+    - Input pengguna tidak hilang saat terjadi error (dipertahankan di text controller `AiChatPage`).
+  - **Debug Diagnostics Model 404:**
+    - Hanya aktif pada `kDebugMode`: jika terjadi error 404, memanggil endpoint `https://generativelanguage.googleapis.com/v1beta/models` untuk mencatat daftar model Gemini yang aktif dan tersedia ke log debug tanpa mencetak kunci API.
+  - **Integritas Prompt & Konteks:**
+    - Mempertahankan `systemInstruction` asisten membaca buku StoryLoka.
+    - Mempertahankan pembatasan maksimal 10 riwayat pesan terakhir sebagai konteks percakapan.
+  - **Pengujian Lengkap (`test/fase_r3_test.dart` & `test/fase_b5_test.dart`):**
+    - Dibuat 12 skenario pengujian baru di `test/fase_r3_test.dart` mencakup seluruh kode error (400, 401, 403, 404, 429, 500, 503, timeout, socket), model default dan custom, header x-goog-api-key, respons SAFETY, respons kosong, dan systemInstruction.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r3_test.dart`: **12/12 tests passed**.
+  - `flutter test` (keseluruhan suite): **209/209 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R3+ — Hotfix Timeout AI Chat (SELESAI)
+
+- **Konteks:** User melaporkan error timeout pada AI Chat setelah beberapa pesan saja.
+- **Root Cause:**
+  1. `GEMINI_MODEL=gemini-flash-lite-latest` di `.env` adalah nama model yang **tidak valid** (model tidak ada di v1beta), sehingga setiap permintaan menghasilkan HTTP 404.
+  2. Kode penanganan 404 lama (Fase R3) secara otomatis memanggil endpoint `/v1beta/models` (network call kedua, timeout 10 detik) untuk mendaftar model tersedia di debug mode — ini membuat total waktu tunggu 404 + listModels bisa melebihi batas timeout 20 detik di Flutter, sehingga setiap chat selalu berakhir `TimeoutException`.
+- **Perbaikan:**
+  - **`.env`:** `GEMINI_MODEL` diubah dari `gemini-flash-lite-latest` → `gemini-2.0-flash-lite` (nama resmi valid Gemini 2.0 Flash Lite).
+  - **`lib/data/repositories/remote/gemini_chat_repository.dart`:**
+    - Timeout HTTP POST dinaikkan dari 20 detik → **30 detik** sebagai buffer untuk jaringan wireless.
+    - Panggilan `listAvailableModels()` (network call kedua) **dihapus** dari handler error 404. Kini error 404 hanya mencatat nama model yang bermasalah ke debug log tanpa network call tambahan, mencegah akumulasi timeout.
+  - **`test/fase_r3_test.dart`:**
+    - Test #6 diperbarui: memverifikasi endpoint `/models` **tidak** dipanggil saat 404 (sebelumnya memverifikasi dipanggil). Menggunakan `expectLater` (async-safe) menggantikan `expect` biasa.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r3_test.dart`: **12/12 tests passed**.
+  - `flutter test` (keseluruhan suite): **209/209 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R4 — Integrasi AI Chat DeepSeek + Fallback Gemini (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **`.env` & `lib/core/config/env.dart`:** Menambahkan `DEEPSEEK_API_KEY` ke `.env` dan `.env.example`. Getter `Env.deepseekApiKey` ditambahkan.
+  - **`lib/data/repositories/remote/deepseek_chat_repository.dart` (baru):**
+    - Implementasi `ChatRepository` via DeepSeek REST API (OpenAI-compatible format).
+    - Endpoint `POST https://api.deepseek.com/chat/completions`, model `deepseek-chat`.
+    - Key via header `Authorization: Bearer <key>`. Role `model` → `assistant`.
+    - Batas 10 riwayat, pemetaan error (400/401/403/404/429/5xx/timeout/socket), penanganan `content_filter`.
+  - **`lib/data/repositories/remote/fallback_chat_repository.dart` (baru):**
+    - Pola Primary (DeepSeek) → Fallback (Gemini).
+    - Fallback otomatis untuk: timeout, 402 (saldo akun DeepSeek habis / Insufficient Balance), 429 (kuota habis), 5xx (server sibuk). Error 400/401/403/404 langsung dilempar ke UI.
+    - Storage ops selalu ke primary.
+  - **Model Gemini Diperbarui ke `gemini-3.5-flash-lite`:** Terverifikasi aktif dan memberikan respons 200 OK saat diuji langsung dengan endpoint REST Google.
+  - **`lib/app/providers.dart`:** Mengganti `GeminiChatRepository` langsung dengan `FallbackChatRepository(primary: DeepSeek, fallback: Gemini)`.
+  - **`test/fase_r4_test.dart` (baru):** 18 skenario (10 DeepSeek + 8 Fallback).
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r4_test.dart`: **18/18 tests passed**.
+  - `flutter test` (keseluruhan suite): **227/227 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R4 (Lanjutan) — Audit & Perbaikan NotificationService (Pengingat Harian & Stopwatch) (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Inisialisasi & Channel Android (`NotificationService.initialize`):**
+    - Dipanggil di `lib/main.dart` sebelum `runApp(...)`.
+    - Setup eksplisit dua Notification Channel Android:
+      - `reading_reminder`: Importance HIGH, sound & vibration true (untuk pengingat harian).
+      - `reading_timer`: Importance LOW, sound & vibration false, badge false (untuk status stopwatch ongoing).
+    - Deteksi zona waktu perangkat dinamis via `flutter_timezone: ^5.1.1` (`(await FlutterTimezone.getLocalTimezone()).identifier`), fallback ke `Asia/Jakarta`, serta logging nama zona waktu ke debug console.
+  - **Izin & Verifikasi Switch Profile:**
+    - Method `requestPermission()` dan `areNotificationsEnabled()` dihubungkan ke toggle switch di `ProfilePage`.
+    - Jika izin notifikasi ditolak oleh sistem/pengguna, toggle switch otomatis dikembalikan ke posisi mati dan dialog Cozy Botanical ditampilkan dengan tombol "Buka Pengaturan" (`Geolocator.openAppSettings()`).
+    - Jika izin diberikan, jadwal diaktifkan, status diverifikasi via `pendingNotificationRequests()`, dan hasil verifikasi ditampilkan lewat `AppSnackBar.success`.
+    - Pengaturan notifikasi (aktif/tidak, jam, menit) tersimpan di `SharedPreferences` dan dimuat ulang secara otomatis saat `ProfilePage` dibuka (`_loadSettings`).
+  - **Pengingat Harian Zoned Schedule:**
+    - Method `scheduleDailyReadingReminder(int hour, int minute)` menggunakan `tz.zonedSchedule` dengan `matchDateTimeComponents: DateTimeComponents.time` dan `androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle`.
+    - Logika murni `nextInstanceOfTime(hour, minute, {tz.TZDateTime? now})` menjamin jika waktu hari ini sudah lewat, jadwal otomatis digeser ke esok hari (termasuk pergantian bulan dan tahun).
+    - Audit Android manifest & Gradle:
+      - `RECEIVE_BOOT_COMPLETED` aktif di `AndroidManifest.xml`.
+      - `ScheduledNotificationReceiver` dan `ScheduledNotificationBootReceiver` terdaftar resmi.
+      - `isCoreLibraryDesugaringEnabled = true` dan `desugar_jdk_libs:2.1.4` aktif di `build.gradle.kts`.
+  - **Notifikasi Stopwatch Chronometer:**
+    - `showStopwatchNotification` menggunakan `usesChronometer: true`, `when: startTime.millisecondsSinceEpoch`, `ongoing: true`, `autoCancel: false`, `channelId: 'reading_timer'` sehingga sistem Android yang menghitung detik secara native tanpa polling per detik di Dart.
+    - Pada `ReadingTimerPage`:
+      - Saat timer berjalan / di-resume: `effectiveStartTime = now.subtract(_accumulatedDuration)` diteruskan ke `showStopwatchNotification`.
+      - Saat timer di-pause: menampilkan `showStopwatchPausedNotification` dengan status "Dijeda" dan durasi terformat (`usesChronometer: false`).
+      - Saat timer di-finish atau di-discard: membatalkan notifikasi stopwatch via `cancelStopwatchNotification()`.
+  - **Tombol Debug (kDebugMode):**
+    - Dua tombol ditambahkan di Section Notifikasi `ProfilePage` (hanya tampil saat `kDebugMode`):
+      - "Kirim notifikasi tes sekarang" (`showInstantTestNotification`)
+      - "Jadwalkan tes 2 menit lagi" (`scheduleTestNotificationInMinutes(2)`)
+  - **Pengujian Unit (`test/fase_r4_notif_test.dart`):**
+    - 9 skenario pengujian komprehensif: penjadwalan hari ini, rollover esok hari, pergantian bulan (31 Okt -> 1 Nov), pergantian tahun (31 Des -> 1 Jan), formatting durasi stopwatch, persistensi SharedPreferences pengingat & stopwatch, inisialisasi zona waktu aman.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r4_notif_test.dart`: **9/9 tests passed**.
+  - `flutter test` (keseluruhan suite): **236/236 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase R6 — Sensor Cahaya Native (Sensor.TYPE_LIGHT) untuk Tema Auto (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Android Platform Channel (`MainActivity.kt`):**
+    - Mengimplementasikan `EventChannel("storyloka/light")` menggunakan `SensorManager` dan `Sensor.TYPE_LIGHT` langsung di Kotlin tanpa dependensi pihak ketiga.
+    - Mengirim nilai pembacaan intensitas cahaya dalam satuan `Double` (lux) pada `onSensorChanged`.
+    - Mengaktifkan `registerListener` pada `onListen` dan `unregisterListener` pada `onCancel` dan `onDestroy` untuk mencegah kebocoran memori.
+    - Menambahkan `MethodChannel("storyloka/light_status")` dengan method `isSensorAvailable` untuk mengecek ketersediaan sensor fisik secara andal.
+  - **LightSensorService Terintegrasi (`lib/core/services/light_sensor_service.dart`):**
+    - Menghubungkan ke `EventChannel` dan `MethodChannel` native.
+    - Mengimplementasikan `WidgetsBindingObserver` untuk manajemen siklus hidup: hanya mendengarkan stream saat mode Auto aktif dan aplikasi berada di foreground (`AppLifecycleState.resumed`), dan otomatis berhenti saat aplikasi masuk background (`paused/inactive/detached`) guna menghemat daya baterai.
+    - Logika hysteresis murni: moving average 3 detik (`calculateAverageLux`), gelap (< 10 lux) beralih ke Dark, terang (> 40 lux) beralih ke Light, dan buffer 10–40 lux mempertahankan tema saat ini.
+    - Rate limit: perubahan tema dibatasi minimal tiap 5 detik untuk mencegah kedipan tampilan.
+    - Fallback: jika sensor tidak tersedia atau stream error, otomatis fallback ke tema sistem (`ThemeMode.system`) dengan label `"Sensor cahaya tidak tersedia, mengikuti tema sistem."`.
+    - Mode percepatan debug (`fastHysteresis`): opsi jendela 1 detik dan jeda 1 detik untuk mempermudah QA / pengujian.
+  - **Pembaruan UI Profile (`lib/features/profile/profile_page.dart`):**
+    - Kartu tema dibungkus `ListenableBuilder` mendengarkan `LightSensorService.instance`.
+    - Saat mode Auto dan sensor tersedia: menampilkan pembacaan lux dinamis `"Cahaya sekitar: {n} lux"`.
+    - Pada `kDebugMode` saat mode Auto: menyediakan opsi toggle `"Debug: Percepat hysteresis (1 dtk)"` agar mudah diuji secara langsung.
+    - Tidak mengubah tampilan layar lain sesuai batasan instruksi.
+  - **Pengujian Unit (`test/fase_r6_test.dart`):**
+    - 8 skenario pengujian komprehensif menguji: moving average 3 detik, penanganan sampel kosong, hysteresis dark/light/buffer, rate-limiting 5 detik, percepatan debug 1 detik, label lux dinamis, fallback tema sistem, dan siklus hidup `AppLifecycleState`.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_r6_test.dart`: **8/8 tests passed**.
+  - `flutter test` (keseluruhan suite): **244/244 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+

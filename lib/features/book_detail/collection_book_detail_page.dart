@@ -7,6 +7,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/book_widgets.dart';
@@ -82,27 +83,13 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
   Future<void> _confirmRemove() async {
     if (_book == null) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Hapus dari Koleksi?'),
-          content: Text(
-            'Apakah Anda yakin ingin menghapus "${_book!.title}" dari koleksi Anda?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Hapus'),
-            ),
-          ],
-        );
-      },
+      title: 'Hapus dari Koleksi?',
+      message: 'Apakah Anda yakin ingin menghapus "${_book!.title}" dari koleksi Anda?',
+      confirmLabel: 'Hapus',
+      cancelLabel: 'Batal',
+      isDestructive: true,
     );
 
     if (confirmed == true && mounted) {
@@ -209,6 +196,9 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
     final synopsis = (book.synopsis != null && book.synopsis!.trim().isNotEmpty)
         ? book.synopsis!.trim()
         : 'Sinopsis tidak tersedia';
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final useColumnLayout = screenWidth < 340 || textScale > 1.15;
 
     return RefreshIndicator(
       onRefresh: _loadBook,
@@ -219,7 +209,7 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
           vertical: AppSpacing.m,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Cover Buku
             Center(
@@ -272,10 +262,11 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
             const SizedBox(height: AppSpacing.xl),
 
             // 2 tombol: Start Reading (primary) & Update Progress (secondary)
-            Row(
-              children: [
-                Expanded(
-                  child: PrimaryButton(
+            if (useColumnLayout)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PrimaryButton(
                     label: 'Start Reading',
                     icon: Icons.play_arrow_rounded,
                     onPressed: () async {
@@ -293,10 +284,8 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
                       if (mounted) _loadBook();
                     },
                   ),
-                ),
-                const SizedBox(width: AppSpacing.m),
-                Expanded(
-                  child: SecondaryButton(
+                  const SizedBox(height: AppSpacing.s),
+                  SecondaryButton(
                     label: 'Update Progress',
                     icon: Icons.edit_note_rounded,
                     onPressed: () async {
@@ -304,9 +293,44 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
                       if (mounted) _loadBook();
                     },
                   ),
-                ),
-              ],
-            ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: PrimaryButton(
+                      label: 'Start Reading',
+                      icon: Icons.play_arrow_rounded,
+                      onPressed: () async {
+                        if (book.status != BookStatus.reading) {
+                          final updated = book.copyWith(
+                            status: BookStatus.reading,
+                            startedAt: book.startedAt ?? DateTime.now(),
+                            lastReadAt: DateTime.now(),
+                            updatedAt: DateTime.now(),
+                          );
+                          await context.read<LibraryRepository>().updateBook(updated);
+                        }
+                        if (!mounted) return;
+                        await context.push('/reading/timer/${book.id}');
+                        if (mounted) _loadBook();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.m),
+                  Expanded(
+                    child: SecondaryButton(
+                      label: 'Update Progress',
+                      icon: Icons.edit_note_rounded,
+                      onPressed: () async {
+                        await context.push('/reading/progress/${book.id}');
+                        if (mounted) _loadBook();
+                      },
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: AppSpacing.xl),
 
             // Card Reading Status
@@ -317,12 +341,17 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Reading Status',
-                        style: AppText.sectionHeading(
-                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                      Expanded(
+                        child: Text(
+                          'Reading Status',
+                          style: AppText.sectionHeading(
+                            color: isDark ? AppColors.inkDark : AppColors.ink,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: AppSpacing.s),
                       StatusBadge(status: book.status),
                     ],
                   ),
@@ -362,24 +391,14 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
                     const SizedBox(height: AppSpacing.xs),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TextButton(
+                      child: TertiaryButton(
+                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                         onPressed: () {
                           setState(() {
                             _isSynopsisExpanded = !_isSynopsisExpanded;
                           });
                         },
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(50, 30),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                          style: AppText.button(
-                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                            fontSize: 13,
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -405,23 +424,31 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
                       final starNum = index + 1;
                       final isSelected = _selectedRating >= starNum;
                       final isFinished = book.status == BookStatus.finished;
-                      return InkWell(
-                        onTap: isFinished
-                            ? () {
-                                setState(() {
-                                  _selectedRating = starNum;
-                                });
-                              }
-                            : null,
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Icon(
-                            isSelected ? Icons.star_rounded : Icons.star_outline_rounded,
-                            size: 32,
-                            color: isFinished
-                                ? AppColors.softApricot
-                                : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                      return Semantics(
+                        button: true,
+                        enabled: isFinished,
+                        label: 'Beri rating $starNum bintang',
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: InkWell(
+                            onTap: isFinished
+                                ? () {
+                                    setState(() {
+                                      _selectedRating = starNum;
+                                    });
+                                  }
+                                : null,
+                            borderRadius: BorderRadius.circular(AppSpacing.radius22),
+                            child: Center(
+                              child: Icon(
+                                isSelected ? Icons.star_rounded : Icons.star_outline_rounded,
+                                size: AppSpacing.iconXl,
+                                color: isFinished
+                                    ? AppColors.softApricot
+                                    : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -495,22 +522,30 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
 
   Widget _buildMetaItem(IconData icon, String text) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: AppText.caption(
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: (screenWidth - 48).clamp(160.0, 520.0)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
             color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
           ),
-        ),
-      ],
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption(
+                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

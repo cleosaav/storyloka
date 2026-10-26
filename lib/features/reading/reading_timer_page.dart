@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../data/models/reading_session.dart';
 import '../../data/models/user_book.dart';
@@ -117,9 +118,11 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
       _startTimestamp = now;
     });
 
+    // Menghitung effective start time agar chronometer notifikasi memperhitungkan durasi terakumulasi
+    final effectiveStartTime = now.subtract(_accumulatedDuration);
     NotificationService.instance.showStopwatchNotification(
       bookTitle: _book?.title ?? 'Buku',
-      startTime: now,
+      startTime: effectiveStartTime,
     );
 
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
@@ -133,7 +136,7 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
     if (!_isRunning) return;
     final now = DateTime.now();
     _ticker?.cancel();
-    NotificationService.instance.cancelStopwatchNotification();
+    final elapsed = _currentElapsed;
     setState(() {
       _isRunning = false;
       if (_startTimestamp != null) {
@@ -141,6 +144,12 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
         _startTimestamp = null;
       }
     });
+
+    // Saat pause, tampilkan notifikasi berstatus 'Dijeda' — PRD §10.5 & Fase R4
+    NotificationService.instance.showStopwatchPausedNotification(
+      bookTitle: _book?.title ?? 'Buku',
+      elapsed: elapsed,
+    );
   }
 
   void _togglePlayPause() {
@@ -159,10 +168,13 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
   }
 
   Future<void> _finishReading() async {
-    _pauseTimer();
+    _ticker?.cancel();
     NotificationService.instance.cancelStopwatchNotification();
     final elapsed = _currentElapsed;
     final durationSeconds = elapsed.inSeconds;
+    setState(() {
+      _isRunning = false;
+    });
 
     if (_book != null && durationSeconds > 0) {
       final session = ReadingSession(
@@ -197,27 +209,34 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Keluar dari Sesi Membaca?'),
-          content: const Text(
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AppDialog(
+          title: Text(
+            'Keluar dari Sesi Membaca?',
+            style: AppText.cardHeading(
+              color: isDark ? AppColors.inkDark : AppColors.ink,
+            ),
+          ),
+          content: Text(
             'Sesi membaca Anda sedang berlangsung. Apakah Anda ingin menyimpan sesi ini atau membuangnya?',
+            style: AppText.body(
+              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+            ),
           ),
           actions: [
-            TextButton(
+            TertiaryButton(
+              label: 'Buang',
+              color: AppColors.error,
               onPressed: () => Navigator.of(ctx).pop('discard'),
-              child: const Text('Buang', style: TextStyle(color: AppColors.error)),
             ),
-            TextButton(
+            TertiaryButton(
+              label: 'Lanjut Membaca',
+              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
               onPressed: () => Navigator.of(ctx).pop('continue'),
-              child: const Text('Lanjut Membaca'),
             ),
-            ElevatedButton(
+            PrimaryButton(
+              label: 'Simpan & Keluar',
               onPressed: () => Navigator.of(ctx).pop('save'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.deepTeal,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Simpan & Keluar'),
             ),
           ],
         );
@@ -228,6 +247,7 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
       await _finishReading();
       return false;
     } else if (action == 'discard') {
+      await NotificationService.instance.cancelStopwatchNotification();
       return true;
     } else {
       // Lanjut membaca
@@ -259,9 +279,9 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
               color: isDark ? AppColors.inkDark : AppColors.ink,
             ),
           ),
-          leading: IconButton(
+          leading: AppIconButton(
             tooltip: 'Kembali',
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: Icons.arrow_back_rounded,
             onPressed: () async {
               final router = GoRouter.of(context);
               final allow = await _handlePopScope();
@@ -279,8 +299,8 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
 
   Widget _buildBody(bool isDark) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.deepTeal),
+      return Center(
+        child: CircularProgressIndicator(color: context.primaryColor),
       );
     }
 
@@ -318,111 +338,128 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
     final book = _book!;
     final elapsed = _currentElapsed;
     final timeFormatted = _formatDuration(elapsed);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final stopwatchSize = (screenWidth * 0.55).clamp(180.0, 260.0);
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.pageMargin,
-          vertical: AppSpacing.l,
-        ),
-        child: Column(
-          children: [
-            // Info ringkas buku di atas
-            Row(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.pageMargin,
+              vertical: AppSpacing.l,
+            ),
+            child: Column(
               children: [
-                BookCover(
-                  coverUrl: book.coverUrl,
-                  width: 50,
-                  height: 75,
-                  borderRadius: 8,
-                ),
-                const SizedBox(width: AppSpacing.m),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        book.title,
-                        style: AppText.cardHeading(
-                          color: isDark ? AppColors.inkDark : AppColors.ink,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (book.authors != null && book.authors!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          book.authors!,
-                          style: AppText.caption(
-                            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-
-            // Stopwatch besar dalam Ring Sage dengan ikon daun/buku
-            Center(
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark
-                      ? AppColors.surfaceDark
-                      : AppColors.warmIvory,
-                  border: Border.all(
-                    color: _isRunning
-                        ? AppColors.deepTeal
-                        : (isDark ? AppColors.borderDark : AppColors.sageGreen),
-                    width: 6,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_isRunning ? AppColors.deepTeal : AppColors.sageGreen)
-                          .withValues(alpha: 0.15),
-                      blurRadius: 24,
-                      spreadRadius: 4,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                // Info ringkas buku di atas
+                Row(
                   children: [
-                    Icon(
-                      Icons.menu_book_rounded,
-                      size: 28,
-                      color: _isRunning
-                          ? AppColors.deepTeal
-                          : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                    BookCover(
+                      coverUrl: book.coverUrl,
+                      width: 50,
+                      height: 75,
+                      borderRadius: 8,
                     ),
-                    const SizedBox(height: AppSpacing.s),
-                    Text(
-                      timeFormatted,
-                      style: AppText.displayLarge(
-                        color: isDark ? AppColors.inkDark : AppColors.ink,
-                      ).copyWith(fontSize: 40, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _isRunning ? 'Sedang Membaca...' : 'Timer Dijeda',
-                      style: AppText.caption(
-                        color: _isRunning
-                            ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
-                            : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
-                      ).copyWith(fontWeight: FontWeight.w600),
+                    const SizedBox(width: AppSpacing.m),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            book.title,
+                            style: AppText.cardHeading(
+                              color: isDark ? AppColors.inkDark : AppColors.ink,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (book.authors != null && book.authors!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              book.authors!,
+                              style: AppText.caption(
+                                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
-            const Spacer(),
+                const SizedBox(height: AppSpacing.xl),
+
+                // Stopwatch besar dalam Ring Sage dengan ikon daun/buku
+                Center(
+                  child: Semantics(
+                    label: 'Waktu membaca: $timeFormatted',
+                    liveRegion: true,
+                    child: Container(
+                      width: stopwatchSize,
+                      height: stopwatchSize,
+                      padding: const EdgeInsets.all(AppSpacing.m),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDark
+                            ? AppColors.surfaceDark
+                            : AppColors.warmIvory,
+                        border: Border.all(
+                          color: _isRunning
+                              ? context.primaryColor
+                              : (isDark ? AppColors.borderDark : AppColors.sageGreen),
+                          width: 6,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_isRunning ? context.primaryColor : AppColors.sageGreen)
+                                .withValues(alpha: 0.15),
+                            blurRadius: 24,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.menu_book_rounded,
+                            size: 24,
+                            color: _isRunning
+                                ? context.primaryColor
+                                : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              timeFormatted,
+                              style: AppText.displayLarge(
+                                color: isDark ? AppColors.inkDark : AppColors.ink,
+                              ).copyWith(fontSize: 40, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _isRunning ? 'Sedang Membaca...' : 'Timer Dijeda',
+                              style: AppText.caption(
+                                color: _isRunning
+                                    ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
+                                    : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                              ).copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            const SizedBox(height: AppSpacing.xl),
 
             // Kontrol: Play/Pause besar dan Finish Reading
             Row(
@@ -452,6 +489,8 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 }

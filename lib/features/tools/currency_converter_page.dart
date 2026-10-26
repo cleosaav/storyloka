@@ -7,6 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_dropdown.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../data/repositories/currency_repository.dart';
 import '../../app/providers.dart';
@@ -165,6 +166,9 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final isNarrow = screenWidth < 340 || textScale > 1.15;
 
     return Scaffold(
       appBar: AppBar(
@@ -204,40 +208,73 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
                             const SizedBox(height: AppSpacing.l),
 
                             // From / Swap / To
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _CurrencyDropdown(
+                            if (isNarrow)
+                              Column(
+                                children: [
+                                  _CurrencyDropdown(
                                     label: 'Dari',
                                     value: _fromCurrency,
                                     isDark: isDark,
                                     onChanged: (v) => setState(() => _fromCurrency = v!),
                                   ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-                                  child: IconButton(
-                                    onPressed: _swap,
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: AppColors.deepTeal,
-                                      foregroundColor: AppColors.white,
-                                      shape: const CircleBorder(),
-                                      padding: const EdgeInsets.all(8),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Center(
+                                    child: IconButton(
+                                      onPressed: _swap,
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: context.primaryColor,
+                                        foregroundColor: AppColors.white,
+                                        shape: const CircleBorder(),
+                                        padding: const EdgeInsets.all(8),
+                                      ),
+                                      icon: const Icon(Icons.swap_vert_rounded, size: 22),
+                                      tooltip: 'Tukar',
                                     ),
-                                    icon: const Icon(Icons.swap_horiz_rounded, size: 22),
-                                    tooltip: 'Tukar',
                                   ),
-                                ),
-                                Expanded(
-                                  child: _CurrencyDropdown(
+                                  const SizedBox(height: AppSpacing.xs),
+                                  _CurrencyDropdown(
                                     label: 'Ke',
                                     value: _toCurrency,
                                     isDark: isDark,
                                     onChanged: (v) => setState(() => _toCurrency = v!),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _CurrencyDropdown(
+                                      label: 'Dari',
+                                      value: _fromCurrency,
+                                      isDark: isDark,
+                                      onChanged: (v) => setState(() => _fromCurrency = v!),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                                    child: IconButton(
+                                      onPressed: _swap,
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: context.primaryColor,
+                                        foregroundColor: AppColors.white,
+                                        shape: const CircleBorder(),
+                                        padding: const EdgeInsets.all(8),
+                                      ),
+                                      icon: const Icon(Icons.swap_horiz_rounded, size: 22),
+                                      tooltip: 'Tukar',
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _CurrencyDropdown(
+                                      label: 'Ke',
+                                      value: _toCurrency,
+                                      isDark: isDark,
+                                      onChanged: (v) => setState(() => _toCurrency = v!),
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ),
@@ -258,9 +295,8 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
                             const SizedBox(height: AppSpacing.s),
                             Text(
                               formatCurrencyResult(_result, _toCurrency),
-                              style: AppText.displayLarge(
+                              style: AppText.displayMedium(
                                 color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                                fontSize: 36,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -351,47 +387,18 @@ class _CurrencyDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-          style: AppText.caption(
-            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-          ).copyWith(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-            borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
-            border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
-            ),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              isExpanded: true,
-              dropdownColor: isDark ? AppColors.surfaceDark : AppColors.white,
-              style: AppText.bodyMedium(color: isDark ? AppColors.inkDark : AppColors.ink),
-              items: _currencies.map((c) {
-                return DropdownMenuItem(
-                  value: c,
-                  child: Text(
-                    '$c · ${_currencyNames[c] ?? c}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.bodyMedium(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
-                  ),
-                );
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
+    final items = _currencies.map((c) {
+      return AppDropdownItem<String>(
+        value: c,
+        label: '$c · ${_currencyNames[c] ?? c}',
+      );
+    }).toList();
+
+    return AppDropdown<String>(
+      label: label,
+      value: value,
+      items: items,
+      onChanged: onChanged,
     );
   }
 }

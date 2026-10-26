@@ -36,7 +36,7 @@ class ReadingProgressBar extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
           child: SizedBox(
             height: 6,
             child: LinearProgressIndicator(
@@ -118,17 +118,21 @@ class StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: textColor),
+          Icon(icon, size: AppSpacing.iconXs, color: textColor),
           const SizedBox(width: 4),
-          Text(
-            status.label,
-            style: AppText.caption(color: textColor).copyWith(
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              status.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption(color: textColor).copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -167,14 +171,17 @@ class AppChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppSpacing.radius18),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+          constraints: const BoxConstraints(minHeight: 34),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.m,
+            vertical: AppSpacing.xs,
+          ),
           decoration: BoxDecoration(
             color: isSelected ? selectedBg : unselectedBg,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppSpacing.radius18),
             border: Border.all(
               color: isSelected ? selectedBg : unselectedBorder,
               width: 1.0,
@@ -186,14 +193,17 @@ class AppChip extends StatelessWidget {
               if (icon != null) ...[
                 Icon(
                   icon,
-                  size: 16,
+                  size: AppSpacing.iconS,
                   color: textColor,
                 ),
                 const SizedBox(width: AppSpacing.xs),
               ],
-              Text(
-                label,
-                style: AppText.button(color: textColor, fontSize: 13),
+              Flexible(
+                child: Text(
+                  label,
+                  style: AppText.button(color: textColor),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
           ),
@@ -226,7 +236,7 @@ class FilterTabs extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppSpacing.radius22),
       ),
       child: Row(
         children: List.generate(tabs.length, (index) {
@@ -241,12 +251,11 @@ class FilterTabs extends StatelessWidget {
                   color: isSelected
                       ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
                 ),
                 child: Text(
                   tabs[index],
                   style: AppText.button(
-                    fontSize: 13,
                     color: isSelected
                         ? AppColors.white
                         : (isDark ? AppColors.mutedDark : AppColors.mutedGray),

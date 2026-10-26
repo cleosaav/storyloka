@@ -7,10 +7,12 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
+import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
 import '../../data/repositories/library_repository.dart';
 
@@ -89,27 +91,13 @@ class _LibraryPageState extends State<LibraryPage> {
     final isCollection = book.listType == ListType.collection;
     final listLabel = isCollection ? 'Koleksi' : 'Wishlist';
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Hapus dari $listLabel?'),
-          content: Text(
-            'Apakah Anda yakin ingin menghapus "${book.title}" dari $listLabel Anda?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Hapus'),
-            ),
-          ],
-        );
-      },
+      title: 'Hapus dari $listLabel?',
+      message: 'Apakah Anda yakin ingin menghapus "${book.title}" dari $listLabel Anda?',
+      confirmLabel: 'Hapus',
+      cancelLabel: 'Batal',
+      isDestructive: true,
     );
 
     if (confirmed == true && mounted) {
@@ -166,18 +154,18 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadBooks,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Search Bar & Filter Tabs
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.pageMargin,
-                vertical: AppSpacing.s,
-              ),
-              child: Column(
+      body: ResponsiveBody(
+        child: RefreshIndicator(
+          onRefresh: _loadBooks,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Search Bar & Filter Tabs
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppSpacing.s,
+                ),
+                child: Column(
                 children: [
                   AppTextField(
                     controller: _searchController,
@@ -219,8 +207,9 @@ class _LibraryPageState extends State<LibraryPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildContent(bool isDark) {
     if (_isLoading) {
@@ -230,31 +219,40 @@ class _LibraryPageState extends State<LibraryPage> {
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 56,
-                color: isDark ? AppColors.mutedDark : AppColors.error,
-              ),
-              const SizedBox(height: AppSpacing.m),
-              Text(
-                _errorMessage!,
-                style: AppText.cardHeading(
-                  color: isDark ? AppColors.inkDark : AppColors.ink,
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.l),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline_rounded,
+                      size: 56,
+                      color: isDark ? AppColors.mutedDark : AppColors.error,
+                    ),
+                    const SizedBox(height: AppSpacing.m),
+                    Text(
+                      _errorMessage!,
+                      style: AppText.cardHeading(
+                        color: isDark ? AppColors.inkDark : AppColors.ink,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppSpacing.l),
+                    PrimaryButton(
+                      label: 'Coba Lagi',
+                      onPressed: _loadBooks,
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: AppSpacing.l),
-              PrimaryButton(
-                label: 'Coba Lagi',
-                onPressed: _loadBooks,
-              ),
-            ],
+            ),
           ),
         ),
       );
@@ -268,69 +266,91 @@ class _LibraryPageState extends State<LibraryPage> {
       final isSearching = _searchQuery.trim().isNotEmpty;
 
       if (isSearching) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.search_off_rounded,
-                  size: 64,
-                  color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                ),
-                const SizedBox(height: AppSpacing.m),
-                Text(
-                  'Buku tidak ditemukan',
-                  style: AppText.sectionHeading(
-                    color: isDark ? AppColors.inkDark : AppColors.ink,
+        return LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.l),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off_rounded,
+                        size: 56,
+                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                      ),
+                      const SizedBox(height: AppSpacing.m),
+                      Text(
+                        'Buku tidak ditemukan',
+                        style: AppText.sectionHeading(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.s),
+                      Text(
+                        'Tidak ada buku yang cocok dengan "$_searchQuery".',
+                        style: AppText.body(
+                          color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: AppSpacing.s),
-                Text(
-                  'Tidak ada buku yang cocok dengan "$_searchQuery".',
-                  style: AppText.body(
-                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+              ),
             ),
           ),
         );
       }
 
       // Empty collection / wishlist
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: EmptyStateCard(
-            icon: isCollection
-                ? Icons.collections_bookmark_outlined
-                : Icons.bookmark_border_rounded,
-            title: isCollection ? 'Koleksi Masih Kosong' : 'Wishlist Masih Kosong',
-            message: isCollection
-                ? 'Tambahkan buku yang sedang atau pernah Anda baca ke dalam koleksi Anda.'
-                : 'Simpan buku yang ingin Anda baca di kemudian hari ke daftar wishlist.',
-            actionLabel: 'Add Book',
-            onAction: () {
-              context.go('/add');
-            },
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.l),
+                child: EmptyStateCard(
+                  icon: isCollection
+                      ? Icons.collections_bookmark_outlined
+                      : Icons.bookmark_border_rounded,
+                  title: isCollection ? 'Koleksi Masih Kosong' : 'Wishlist Masih Kosong',
+                  message: isCollection
+                      ? 'Tambahkan buku yang sedang atau pernah Anda baca ke dalam koleksi Anda.'
+                      : 'Simpan buku yang ingin Anda baca di kemudian hari ke daftar wishlist.',
+                  actionLabel: 'Add Book',
+                  onAction: () {
+                    context.go('/add');
+                  },
+                ),
+              ),
+            ),
           ),
         ),
       );
     }
 
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final baseRatio = _selectedTab == 0 ? 0.44 : 0.52;
+    final childAspectRatio = textScale > 1.0
+        ? baseRatio / (1.0 + (textScale - 1.0) * 0.85)
+        : baseRatio;
+
     // Grid 3 kolom
     return GridView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.pageMargin,
         vertical: AppSpacing.m,
       ),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: _selectedTab == 0 ? 0.44 : 0.52,
+        childAspectRatio: childAspectRatio,
         crossAxisSpacing: AppSpacing.m,
         mainAxisSpacing: AppSpacing.l,
       ),
@@ -339,9 +359,12 @@ class _LibraryPageState extends State<LibraryPage> {
         final book = books[index];
         final isCollection = _selectedTab == 0;
 
-        return _LibraryBookItem(
-          book: book,
-          showBadge: isCollection,
+        return BookGridCard(
+          title: book.title,
+          authors: book.authors,
+          coverUrl: book.coverUrl,
+          rating: book.rating,
+          statusBadge: isCollection ? StatusBadge(status: book.status) : null,
           onTap: () async {
             if (isCollection) {
               await context.push('/book/collection/${book.id}');
@@ -358,96 +381,6 @@ class _LibraryPageState extends State<LibraryPage> {
           },
         );
       },
-    );
-  }
-}
-
-class _LibraryBookItem extends StatelessWidget {
-  final UserBook book;
-  final bool showBadge;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  const _LibraryBookItem({
-    required this.book,
-    required this.showBadge,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cover Buku rasio 2:3
-          Expanded(
-            child: SizedBox(
-              width: double.infinity,
-              child: BookCover(
-                coverUrl: book.coverUrl,
-                width: double.infinity,
-                borderRadius: 10,
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-
-          // Judul buku max 2 baris (Fraunces)
-          Text(
-            book.title,
-            style: AppText.bodyMedium(
-              color: isDark ? AppColors.inkDark : AppColors.ink,
-            ).copyWith(fontSize: 12, height: 1.25),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-
-          // Penulis
-          if (book.authors != null && book.authors!.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              book.authors!,
-              style: AppText.caption(
-                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-              ).copyWith(fontSize: 10),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-
-          // Rating bintang jika ada
-          if (book.rating != null && book.rating! > 0) ...[
-            const SizedBox(height: 2),
-            Row(
-              children: List.generate(
-                5,
-                (i) => Icon(
-                  i < book.rating! ? Icons.star_rounded : Icons.star_outline_rounded,
-                  size: 11,
-                  color: AppColors.softApricot,
-                ),
-              ),
-            ),
-          ],
-
-          // Status Badge jika di tab Collection
-          if (showBadge) ...[
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: StatusBadge(status: book.status),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

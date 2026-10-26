@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/secure_session_store.dart';
@@ -10,6 +11,10 @@ import '../profile_repository.dart';
 /// PENTING: Jangan mencetak password atau token ke log!
 String _mapAuthException(Object error) {
   final str = error.toString();
+
+  if (kDebugMode) {
+    debugPrint('[StoryLoka Supabase Auth Error] $error');
+  }
 
   if (error is PostgrestException) {
     final msg = error.message.toUpperCase();
@@ -42,8 +47,20 @@ String _mapAuthException(Object error) {
   if (str.contains('SESSION_INVALID')) {
     return 'Sesi Anda telah berakhir. Silakan masuk kembali.';
   }
-  if (str.contains('SocketException') || str.contains('Failed host lookup') || str.contains('Network')) {
-    return 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
+  if (str.contains('SocketException') ||
+      str.contains('Failed host lookup') ||
+      str.contains('Network') ||
+      str.contains('HandshakeException') ||
+      str.contains('TlsException') ||
+      str.contains('Connection terminated') ||
+      str.contains('Connection closed') ||
+      str.contains('ClientException')) {
+    return 'Koneksi internet HP ke Supabase terputus (HandshakeException). Coba ganti ke paket data seluler atau aktifkan Private DNS (dns.google) di HP.';
+  }
+  if (str.toLowerCase().contains('does not exist') ||
+      str.toLowerCase().contains('schema cache') ||
+      str.toLowerCase().contains('not found')) {
+    return 'Skema database belum siap. Jalankan file supabase/schema.sql di SQL Editor Supabase.';
   }
 
   return 'Terjadi kesalahan pada layanan. Silakan coba beberapa saat lagi.';
@@ -55,13 +72,15 @@ String _mapAuthException(Object error) {
 // ═══════════════════════════════════════════════════
 
 class SupabaseAuthRepository implements AuthRepository {
-  final SupabaseClient client;
+  final SupabaseClient? _customClient;
   final SecureSessionStore sessionStore;
 
   SupabaseAuthRepository({
     SupabaseClient? client,
     required this.sessionStore,
-  }) : client = client ?? Supabase.instance.client;
+  }) : _customClient = client;
+
+  SupabaseClient get client => _customClient ?? Supabase.instance.client;
 
   @override
   Future<AppUser> register(String name, String email, String password) async {
@@ -81,7 +100,7 @@ class SupabaseAuthRepository implements AuthRepository {
       final user = AppUser.fromJson(userMap);
 
       // Simpan session aman (token dan user profil)
-      await sessionStore.saveSession(token: token, user: user);
+      await sessionStore.saveSession(token: token, user: user, mode: 'real');
       return user;
     } catch (e) {
       throw Exception(_mapAuthException(e));
@@ -105,7 +124,7 @@ class SupabaseAuthRepository implements AuthRepository {
       final user = AppUser.fromJson(userMap);
 
       // Simpan session aman
-      await sessionStore.saveSession(token: token, user: user);
+      await sessionStore.saveSession(token: token, user: user, mode: 'real');
       return user;
     } catch (e) {
       throw Exception(_mapAuthException(e));
@@ -160,13 +179,15 @@ class SupabaseAuthRepository implements AuthRepository {
 // ═══════════════════════════════════════════════════
 
 class SupabaseProfileRepository implements ProfileRepository {
-  final SupabaseClient client;
+  final SupabaseClient? _customClient;
   final SecureSessionStore sessionStore;
 
   SupabaseProfileRepository({
     SupabaseClient? client,
     required this.sessionStore,
-  }) : client = client ?? Supabase.instance.client;
+  }) : _customClient = client;
+
+  SupabaseClient get client => _customClient ?? Supabase.instance.client;
 
   @override
   Future<AppUser> getProfile() async {

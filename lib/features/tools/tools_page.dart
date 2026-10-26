@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/widgets/app_card.dart';
+import '../../core/widgets/responsive_body.dart';
 import '../../data/repositories/score_repository.dart';
 
 /// Halaman Tools — 5 card vertikal sesuai PRD §7.7.
@@ -51,7 +53,7 @@ class _ToolsPageState extends State<ToolsPage> {
       _ToolCard(
         id: 'ai_chat',
         icon: Icons.auto_awesome_rounded,
-        iconColor: AppColors.deepTeal,
+        iconColor: isDark ? AppColors.primaryDark : AppColors.deepTeal,
         title: 'AI Chat',
         description: 'Tanya rekomendasi buku, tips membaca, dan tema literatur bersama asisten AI.',
         route: '/tools/ai-chat',
@@ -97,17 +99,18 @@ class _ToolsPageState extends State<ToolsPage> {
           ),
         ),
       ),
-      body: RefreshIndicator(
-        color: AppColors.deepTeal,
-        onRefresh: _loadHighScore,
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pageMargin,
-            vertical: AppSpacing.m,
+      body: ResponsiveBody(
+        child: RefreshIndicator(
+          color: context.primaryColor,
+          onRefresh: _loadHighScore,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.m,
+            ),
+            itemCount: tools.length,
+            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.m),
+            itemBuilder: (ctx, i) => tools[i],
           ),
-          itemCount: tools.length,
-          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.m),
-          itemBuilder: (ctx, i) => tools[i],
         ),
       ),
     );
@@ -137,61 +140,56 @@ class _ToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: isDark ? AppColors.surfaceDark : AppColors.white,
-      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+    return Semantics(
+      label: 'Menu $title, $description',
+      button: true,
+      child: AppCard(
         onTap: () => context.push(route),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-            border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
+        padding: const EdgeInsets.all(AppSpacing.l),
+      child: Row(
+        children: [
+          // Ikon bulat
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 26),
+          ),
+          const SizedBox(width: AppSpacing.l),
+          // Judul + deskripsi
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppText.cardHeading(
+                    color: isDark ? AppColors.inkDark : AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: AppText.caption(
+                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              // Ikon bulat
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: iconColor, size: 26),
-              ),
-              const SizedBox(width: AppSpacing.l),
-              // Judul + deskripsi
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                      style: AppText.cardHeading(
-                        color: isDark ? AppColors.inkDark : AppColors.ink,
-                      )),
-                    const SizedBox(height: 4),
-                    Text(description,
-                      style: AppText.caption(
-                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.s),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-              ),
-            ],
+          const SizedBox(width: AppSpacing.s),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
           ),
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

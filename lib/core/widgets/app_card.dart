@@ -128,21 +128,35 @@ class SupportCard extends StatelessWidget {
 }
 
 /// EmptyStateCard — Ilustrasi kecil/ikon + pesan singkat + satu aksi utama.
+/// Mendukung layout vertikal (default) dan horizontal (EmptyStateCard.horizontal).
 class EmptyStateCard extends StatelessWidget {
   final IconData icon;
-  final String title;
+  final String? title;
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final IconData? actionIcon;
+  final bool isHorizontal;
 
   const EmptyStateCard({
     super.key,
     required this.icon,
-    required this.title,
+    required String this.title,
     required this.message,
     this.actionLabel,
     this.onAction,
-  });
+    this.actionIcon,
+  }) : isHorizontal = false;
+
+  const EmptyStateCard.horizontal({
+    super.key,
+    required this.icon,
+    this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.actionIcon,
+  }) : isHorizontal = true;
 
   @override
   Widget build(BuildContext context) {
@@ -150,35 +164,157 @@ class EmptyStateCard extends StatelessWidget {
     final primaryColor = isDark ? AppColors.primaryDark : AppColors.deepTeal;
     final iconBg = isDark
         ? AppColors.surfaceDark
-        : AppColors.sageGreen.withValues(alpha: 0.2);
+        : AppColors.sageGreen.withValues(alpha: 0.25);
+
+    if (isHorizontal) {
+      return AppCard(
+        padding: const EdgeInsets.all(AppSpacing.cardPadding),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+            final hasTitle = title != null && title!.trim().isNotEmpty;
+            final isNarrow = constraints.maxWidth < 340 || textScale > 1.15;
+
+            final iconWidget = Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: iconBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 24, color: primaryColor),
+            );
+
+            Widget actionButton() {
+              if (actionLabel == null || onAction == null) {
+                return const SizedBox.shrink();
+              }
+              return PrimaryButton(
+                label: actionLabel!,
+                icon: actionIcon,
+                onPressed: onAction,
+              );
+            }
+
+            if (isNarrow) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      iconWidget,
+                      const SizedBox(width: AppSpacing.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (hasTitle) ...[
+                              Text(
+                                title!,
+                                style: AppText.cardHeading(
+                                  color: isDark ? AppColors.inkDark : AppColors.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                            ],
+                            Text(
+                              message,
+                              style: hasTitle
+                                  ? AppText.caption(
+                                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                    )
+                                  : AppText.body(
+                                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (actionLabel != null && onAction != null) ...[
+                    const SizedBox(height: AppSpacing.m),
+                    actionButton(),
+                  ],
+                ],
+              );
+            }
+
+            // Susunan horizontal penuh (ikon di kiri; judul, subteks, tombol di kanan)
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                iconWidget,
+                const SizedBox(width: AppSpacing.l),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasTitle) ...[
+                        Text(
+                          title!,
+                          style: AppText.cardHeading(
+                            color: isDark ? AppColors.inkDark : AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                      ],
+                      Text(
+                        message,
+                        style: hasTitle
+                            ? AppText.caption(
+                                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                              )
+                            : AppText.body(
+                                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                              ),
+                      ),
+                      if (actionLabel != null && onAction != null) ...[
+                        const SizedBox(height: AppSpacing.m),
+                        actionButton(),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
 
     return AppCard(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xl,
-        vertical: AppSpacing.xxl,
+        horizontal: AppSpacing.l,
+        vertical: AppSpacing.l,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 72,
-            height: 72,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               color: iconBg,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 36, color: primaryColor),
+            child: Icon(icon, size: 28, color: primaryColor),
           ),
-          const SizedBox(height: AppSpacing.l),
-          Text(
-            title,
-            style: AppText.cardHeading(
-              color: isDark ? AppColors.inkDark : AppColors.ink,
+          const SizedBox(height: AppSpacing.m),
+          if (title != null && title!.isNotEmpty) ...[
+            Text(
+              title!,
+              style: AppText.cardHeading(
+                color: isDark ? AppColors.inkDark : AppColors.ink,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSpacing.s),
+            const SizedBox(height: AppSpacing.xs),
+          ],
           Text(
             message,
             style: AppText.metadata(
@@ -187,9 +323,10 @@ class EmptyStateCard extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.l),
             PrimaryButton(
               label: actionLabel!,
+              icon: actionIcon,
               onPressed: onAction,
             ),
           ],

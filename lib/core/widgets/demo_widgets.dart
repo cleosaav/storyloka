@@ -92,7 +92,6 @@ class DemoModeChip extends StatelessWidget {
                 color: const Color(0xFF8A5300),
               ).copyWith(
                 fontWeight: FontWeight.w600,
-                fontSize: 11,
               ),
             ),
           ],
@@ -143,6 +142,7 @@ class DemoControlsSheet extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Tutup kontrol demo',
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.of(context).pop(),
                 ),

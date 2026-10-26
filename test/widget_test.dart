@@ -14,7 +14,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(
       MultiProvider(
-        providers: buildAppProviders(),
+        providers: buildAppProviders(useFakeData: true),
         child: const StoryLokaApp(),
       ),
     );

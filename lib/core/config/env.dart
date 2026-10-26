@@ -7,14 +7,18 @@ class Env {
   static bool _isLoaded = false;
   static bool get isLoaded => _isLoaded;
 
+  static bool _envFileNotFound = false;
+  static bool get isEnvFileNotFound => _envFileNotFound;
+
   /// Inisialisasi dan memuat file .env.
   static Future<void> load({String fileName = '.env'}) async {
     try {
       await dotenv.load(fileName: fileName);
       _isLoaded = true;
+      _envFileNotFound = false;
     } catch (_) {
-      // Abaikan error loading jika file tidak ditemukan / di test runner
       _isLoaded = false;
+      _envFileNotFound = true;
     }
   }
 
@@ -27,27 +31,68 @@ class Env {
       dotenv.env.addAll(values);
     }
     _isLoaded = true;
+    _envFileNotFound = false;
+  }
+
+  /// Reset state dan cache environment (berguna untuk pengujian).
+  static void reset() {
+    _isLoaded = false;
+    _envFileNotFound = false;
+    if (dotenv.isInitialized) {
+      dotenv.env.clear();
+    }
   }
 
   static String _safeGet(String key, [String defaultValue = '']) {
     try {
       if (!dotenv.isInitialized) return defaultValue;
-      return dotenv.maybeGet(key) ?? defaultValue;
+      var val = dotenv.maybeGet(key)?.trim() ?? defaultValue;
+      if ((val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.substring(1, val.length - 1).trim();
+      }
+      return val;
     } catch (_) {
       return defaultValue;
     }
   }
 
-  static String get supabaseUrl => _safeGet('SUPABASE_URL');
-  static String get supabaseAnonKey => _safeGet('SUPABASE_ANON_KEY');
-  static String get geminiApiKey => _safeGet('GEMINI_API_KEY');
-  static String get geminiModel => _safeGet('GEMINI_MODEL', 'gemini-flash-latest');
-  static String get googleBooksApiKey => _safeGet('GOOGLE_BOOKS_API_KEY');
+  static String get supabaseUrl {
+    final url = _safeGet('SUPABASE_URL');
+    if (url.endsWith('/')) {
+      return url.substring(0, url.length - 1);
+    }
+    return url;
+  }
 
-  /// Cek kelengkapan konfigurasi Supabase (URL dan Anon Key).
+  /// Mendukung alias SUPABASE_ANON_KEY atau SUPABASE_PUBLISHABLE_KEY — PRD §3.
+  static String get supabaseAnonKey {
+    final anonKey = _safeGet('SUPABASE_ANON_KEY');
+    if (anonKey.trim().isNotEmpty) return anonKey;
+    return _safeGet('SUPABASE_PUBLISHABLE_KEY');
+  }
+
+  static String get geminiApiKey => _safeGet('GEMINI_API_KEY');
+  static String get geminiModel => _safeGet('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+  static String get googleBooksApiKey => _safeGet('GOOGLE_BOOKS_API_KEY');
+  static String get deepseekApiKey => _safeGet('DEEPSEEK_API_KEY');
+
+  /// Daftar nama variabel inti yang masih kosong di file .env (tanpa mencetak nilai).
+  static List<String> get missingVariables {
+    final missing = <String>[];
+    if (supabaseUrl.trim().isEmpty) {
+      missing.add('SUPABASE_URL');
+    }
+    if (supabaseAnonKey.trim().isEmpty) {
+      missing.add('SUPABASE_ANON_KEY / SUPABASE_PUBLISHABLE_KEY');
+    }
+    return missing;
+  }
+
+  /// Cek kelengkapan konfigurasi Supabase (URL dan Anon/Publishable Key).
   static bool get isSupabaseConfigured =>
       supabaseUrl.trim().isNotEmpty && supabaseAnonKey.trim().isNotEmpty;
 
   /// Cek validitas konfigurasi inti.
-  static bool get isConfigValid => isSupabaseConfigured;
+  static bool get isConfigValid => !_envFileNotFound && isSupabaseConfigured;
 }

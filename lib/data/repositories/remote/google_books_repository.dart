@@ -2,12 +2,45 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../book_search_repository.dart';
 import '../../../core/config/env.dart';
+import '../book_search_repository.dart';
 
-/// Implementasi nyata BookSearchRepository menggunakan Google Books API — PRD §9.1.
+/// Exception umum untuk error pada Google Books API.
+class GoogleBooksException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  GoogleBooksException(this.message, {this.statusCode});
+
+  @override
+  String toString() => message;
+}
+
+/// Exception kuota habis (HTTP 429) — Fase R2.
+class GoogleBooksQuotaException extends GoogleBooksException {
+  GoogleBooksQuotaException(
+      [super.message = 'Kuota pencarian habis, coba lagi nanti'])
+      : super(statusCode: 429);
+}
+
+/// Exception otentikasi / API key ditolak (HTTP 403) — Fase R2.
+class GoogleBooksAuthException extends GoogleBooksException {
+  GoogleBooksAuthException(
+      [super.message = 'Akses ditolak, periksa API key'])
+      : super(statusCode: 403);
+}
+
+/// Exception timeout atau masalah jaringan — Fase R2.
+class GoogleBooksNetworkException extends GoogleBooksException {
+  GoogleBooksNetworkException(
+      [super.message =
+          'Periksa koneksi Anda. Koneksi ke server buku gagal (timeout 15 detik).']);
+}
+
+/// Implementasi nyata BookSearchRepository menggunakan Google Books API — PRD §9.1 & Fase R2.
 class GoogleBooksRepository implements BookSearchRepository {
   GoogleBooksRepository({http.Client? client})
       : _client = client ?? http.Client();
@@ -39,24 +72,25 @@ class GoogleBooksRepository implements BookSearchRepository {
     int maxResults = 20,
     int? startIndex,
   }) async {
-    if (query.trim().isEmpty) return [];
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return [];
 
-    // Bangun parameter q sesuai PRD §9.1
+    // Bangun parameter q sesuai PRD §9.1 & Fase R2
     String q;
     switch (filter) {
       case 'author':
-        q = 'inauthor:$query';
+        q = 'inauthor:$cleanQuery';
         break;
       case 'isbn':
         // Hapus tanda hubung dan spasi — PRD §9.1
-        final cleanIsbn = query.replaceAll(RegExp(r'[\s\-]'), '');
+        final cleanIsbn = cleanQuery.replaceAll(RegExp(r'[\s\-]'), '');
         q = 'isbn:$cleanIsbn';
         break;
       case 'subject':
-        q = 'subject:$query';
+        q = 'subject:$cleanQuery';
         break;
       default: // title
-        q = 'intitle:$query';
+        q = 'intitle:$cleanQuery';
         break;
     }
 
@@ -64,13 +98,16 @@ class GoogleBooksRepository implements BookSearchRepository {
       'q': q,
       'maxResults': maxResults.toString(),
       'printType': 'books',
+      'country': 'ID',
+      'fields':
+          'totalItems,items(id,volumeInfo(title,authors,categories,description,pageCount,imageLinks/thumbnail,industryIdentifiers,publisher),saleInfo(saleability,listPrice,retailPrice))',
     };
 
     if (startIndex != null) {
       params['startIndex'] = startIndex.toString();
     }
 
-    // Key opsional — PRD §3
+    // Key opsional — PRD §3 (tanpa mencetak nilai kunci ke log!)
     final apiKey = Env.googleBooksApiKey;
     if (apiKey.isNotEmpty) {
       params['key'] = apiKey;
@@ -81,10 +118,24 @@ class GoogleBooksRepository implements BookSearchRepository {
     try {
       final response = await _client.get(uri).timeout(_timeout);
 
-      // Status non-200 — PRD §9.1
+      // Catat kode status di log debug tanpa kunci — Fase R2
+      if (kDebugMode) {
+        final safeParams = Map<String, String>.from(params)..remove('key');
+        final safeUri = uri.replace(queryParameters: safeParams);
+        debugPrint('[GoogleBooks] HTTP ${response.statusCode}: $safeUri');
+      }
+
+      // Pemetaan error spesifik — Fase R2
+      if (response.statusCode == 429) {
+        throw GoogleBooksQuotaException('Kuota pencarian habis, coba lagi nanti');
+      }
+      if (response.statusCode == 403) {
+        throw GoogleBooksAuthException('Akses ditolak, periksa API key');
+      }
       if (response.statusCode != 200) {
-        throw Exception(
-          'Google Books API error: status ${response.statusCode}',
+        throw GoogleBooksException(
+          'Terjadi kesalahan saat mencari buku. Silakan coba lagi. (HTTP ${response.statusCode})',
+          statusCode: response.statusCode,
         );
       }
 
@@ -100,13 +151,19 @@ class GoogleBooksRepository implements BookSearchRepository {
           .cast<BookSearchResult>()
           .toList();
     } on TimeoutException {
-      throw Exception('Koneksi ke server buku gagal (timeout 15 detik).');
+      if (kDebugMode) {
+        debugPrint('[GoogleBooks] Timeout 15s');
+      }
+      throw GoogleBooksNetworkException(
+          'Koneksi ke server buku gagal (timeout 15 detik). Periksa koneksi Anda.');
     } catch (e) {
-      if (e is Exception &&
-          e.toString().contains('Google Books API error')) {
+      if (e is GoogleBooksException) {
         rethrow;
       }
-      throw Exception('Tidak ada koneksi internet. Periksa jaringan Anda.');
+      if (kDebugMode) {
+        debugPrint('[GoogleBooks] Network/Socket error: $e');
+      }
+      throw GoogleBooksNetworkException('Periksa koneksi Anda');
     }
   }
 
@@ -128,8 +185,7 @@ class GoogleBooksRepository implements BookSearchRepository {
       if (results.isEmpty) return null;
 
       // Pilih satu hasil acak yang punya judul — PRD §7.3
-      final validResults =
-          results.where((b) => b.title.isNotEmpty).toList();
+      final validResults = results.where((b) => b.title.isNotEmpty).toList();
       if (validResults.isEmpty) return null;
 
       return validResults[random.nextInt(validResults.length)];
@@ -138,7 +194,7 @@ class GoogleBooksRepository implements BookSearchRepository {
     }
   }
 
-  /// Mapping field persis sesuai PRD §9.1.
+  /// Mapping field persis sesuai PRD §9.1 & Fase R2.
   BookSearchResult? _mapToBookSearchResult(Map<String, dynamic> item) {
     final volumeInfo = item['volumeInfo'] as Map<String, dynamic>?;
     if (volumeInfo == null) return null;
@@ -229,9 +285,7 @@ class GoogleBooksRepository implements BookSearchRepository {
 
   /// Menghapus tag HTML dari teks sinopsis — PRD §9.1.
   String _stripHtml(String html) {
-    // Hapus semua tag HTML
     final withoutTags = html.replaceAll(RegExp(r'<[^>]*>'), '');
-    // Decode HTML entities umum
     return withoutTags
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')

@@ -173,7 +173,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                 height: 4,
                 decoration: BoxDecoration(
                   color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusXs / 2),
                 ),
               ),
               const SizedBox(height: AppSpacing.l),
@@ -190,7 +190,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                   Column(children: [
                     Text(
                       '${_engine.score}',
-                      style: AppText.displayLarge(
+                      style: AppText.displayMedium(
                         color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                         fontSize: 40,
                       ),
@@ -201,7 +201,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                   Column(children: [
                     Text(
                       '$_highScore',
-                      style: AppText.displayLarge(
+                      style: AppText.displayMedium(
                         color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                         fontSize: 40,
                       ),
@@ -281,38 +281,45 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                   ),
                   if (_engine.status == SnakeStatus.running ||
                       _engine.status == SnakeStatus.paused)
-                    GestureDetector(
-                      onTap: _togglePause,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.l,
-                          vertical: AppSpacing.s,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
+                    Semantics(
+                      label: _engine.status == SnakeStatus.running
+                          ? 'Jeda permainan'
+                          : 'Lanjutkan permainan',
+                      button: true,
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        onTap: _togglePause,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.l,
+                            vertical: AppSpacing.s,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _engine.status == SnakeStatus.running
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 18,
-                              color: isDark ? AppColors.inkDark : AppColors.ink,
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
+                            borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
+                            border: Border.all(
+                              color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _engine.status == SnakeStatus.running ? 'Pause' : 'Resume',
-                              style: AppText.button(
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _engine.status == SnakeStatus.running
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 18,
                                 color: isDark ? AppColors.inkDark : AppColors.ink,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                _engine.status == SnakeStatus.running ? 'Pause' : 'Resume',
+                                style: AppText.button(
+                                  color: isDark ? AppColors.inkDark : AppColors.ink,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -337,7 +344,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.deepTeal.withValues(alpha: 0.07),
+                        color: (isDark ? AppColors.primaryDark : AppColors.deepTeal).withValues(alpha: 0.07),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -346,7 +353,9 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
                     child: GestureDetector(
-                      onPanUpdate: _handleSwipe,
+                      key: const ValueKey('snake_board_gesture'),
+                      behavior: HitTestBehavior.opaque,
+                      onPanUpdate: _engine.status == SnakeStatus.running ? _handleSwipe : null,
                       onTap: () {
                         if (_engine.status == SnakeStatus.ready) {
                           _startGame();
@@ -375,7 +384,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                                     decoration: BoxDecoration(
                                       color: (isDark ? AppColors.bgDark : AppColors.ink)
                                           .withValues(alpha: 0.72),
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(AppSpacing.radiusL),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
@@ -414,7 +423,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                                     decoration: BoxDecoration(
                                       color: (isDark ? AppColors.bgDark : AppColors.ink)
                                           .withValues(alpha: 0.72),
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(AppSpacing.radiusL),
                                     ),
                                     child: Text(
                                       'Paused',
@@ -439,7 +448,9 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                 avatar: Icon(
                   Icons.screen_rotation_rounded,
                   size: 16,
-                  color: _tiltControlEnabled ? AppColors.white : AppColors.deepTeal,
+                  color: _tiltControlEnabled
+                      ? AppColors.white
+                      : (isDark ? AppColors.primaryDark : AppColors.deepTeal),
                 ),
                 label: Text(
                   'Tilt Control (Gyroscope)',
@@ -451,12 +462,11 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                 ),
                 selected: _tiltControlEnabled,
                 onSelected: _toggleTiltControl,
-                selectedColor:
-                    isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                selectedColor: context.primaryColor,
                 backgroundColor:
                     isDark ? AppColors.surfaceDark : AppColors.warmIvory,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
                   side: BorderSide(
                     color:
                         isDark ? AppColors.borderDark : AppColors.borderNeutral,
@@ -519,8 +529,8 @@ class _SnakePainter extends CustomPainter {
     }
 
     // Ular — tubuh
-    final bodyPaint = Paint()..color = AppColors.oceanTeal;
-    final headPaint = Paint()..color = AppColors.deepTeal;
+    final bodyPaint = Paint()..color = isDark ? AppColors.primaryDark : AppColors.oceanTeal;
+    final headPaint = Paint()..color = isDark ? AppColors.softApricot : AppColors.deepTeal;
     const bodyRadius = Radius.circular(4);
 
     for (int i = 0; i < engine.snake.length; i++) {
@@ -540,7 +550,7 @@ class _SnakePainter extends CustomPainter {
     // Mata pada kepala
     if (engine.snake.isNotEmpty) {
       final head = engine.snake.first;
-      final eyePaint = Paint()..color = AppColors.white;
+      final eyePaint = Paint()..color = isDark ? AppColors.bgDark : AppColors.white;
       final cx = head.col * cellW + cellW / 2;
       final cy = head.row * cellH + cellH / 2;
       canvas.drawCircle(Offset(cx - cellW * 0.15, cy - cellH * 0.1), cellW * 0.1, eyePaint);
@@ -549,7 +559,8 @@ class _SnakePainter extends CustomPainter {
 
     // Buku — persegi panjang softApricot + punggung deepTeal (bukan emoji)
     final bookBodyPaint = Paint()..color = AppColors.softApricot;
-    final bookSpinePaint = Paint()..color = AppColors.deepTeal;
+    final bookSpinePaint = Paint()
+      ..color = isDark ? AppColors.primaryDark : AppColors.deepTeal;
 
     final bx = engine.book.col * cellW;
     final by = engine.book.row * cellH;
@@ -574,7 +585,7 @@ class _SnakePainter extends CustomPainter {
     );
     // Garis halaman (2 garis horisontal pada body)
     final linePaint = Paint()
-      ..color = AppColors.deepTeal.withValues(alpha: 0.35)
+      ..color = (isDark ? AppColors.inkDark : AppColors.deepTeal).withValues(alpha: 0.35)
       ..strokeWidth = 0.8;
     final lineX1 = bx + bookMargin + spineW + 2;
     final lineX2 = bx + cellW - bookMargin - 2;
@@ -599,20 +610,37 @@ class _DPad extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    String dirLabel(SnakeDirection dir) {
+      switch (dir) {
+        case SnakeDirection.up:
+          return 'Gerak ke atas';
+        case SnakeDirection.down:
+          return 'Gerak ke bawah';
+        case SnakeDirection.left:
+          return 'Gerak ke kiri';
+        case SnakeDirection.right:
+          return 'Gerak ke kanan';
+      }
+    }
+
     Widget btn(SnakeDirection dir, IconData icon) {
-      return SizedBox(
-        width: 56,
-        height: 56,
-        child: Material(
-          color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => onDirection(dir),
-            child: Icon(
-              icon,
-              size: 28,
-              color: isDark ? AppColors.inkDark : AppColors.deepTeal,
+      return Semantics(
+        label: dirLabel(dir),
+        button: true,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Material(
+            color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
+            borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+              onTap: () => onDirection(dir),
+              child: Icon(
+                icon,
+                size: 28,
+                color: isDark ? AppColors.inkDark : AppColors.deepTeal,
+              ),
             ),
           ),
         ),
@@ -660,10 +688,11 @@ class _ScoreCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
         border: Border.all(
           color: highlight
-              ? AppColors.deepTeal.withValues(alpha: 0.4)
+              ? (isDark ? AppColors.primaryDark : AppColors.deepTeal)
+                  .withValues(alpha: 0.4)
               : (isDark ? AppColors.borderDark : AppColors.borderNeutral),
         ),
       ),

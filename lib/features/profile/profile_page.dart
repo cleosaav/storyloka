@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -16,8 +17,11 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/demo_widgets.dart';
+import '../../core/widgets/progress_and_badge.dart';
+import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
 import '../../data/repositories/library_repository.dart';
 import '../../data/repositories/reading_repository.dart';
@@ -120,7 +124,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.fromSeed(
-              seedColor: AppColors.deepTeal,
+              seedColor: isDark ? AppColors.primaryDark : AppColors.deepTeal,
               brightness: isDark ? Brightness.dark : Brightness.light,
             ),
           ),
@@ -137,13 +141,57 @@ class _ProfilePageState extends State<ProfilePage> {
           hour: picked.hour,
           minute: picked.minute,
         );
+        final pending =
+            await NotificationService.instance.getPendingNotificationRequests();
+        if (!mounted) return;
+        AppSnackBar.show(
+          context,
+          message:
+              'Pengingat membaca diatur pukul ${_formatTimeOfDay(picked)} (${pending.length} aktif).',
+          type: SnackBarType.success,
+        );
+      } else {
+        if (!mounted) return;
+        AppSnackBar.show(
+          context,
+          message: 'Pengingat membaca diatur pukul ${_formatTimeOfDay(picked)}.',
+        );
       }
-      if (!mounted) return;
-      AppSnackBar.show(
-        context,
-        message: 'Pengingat membaca diatur pukul ${_formatTimeOfDay(picked)}.',
-      );
     }
+  }
+
+  Future<void> _showNotificationPermissionDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AppDialog(
+        title: Text(
+          'Izin Notifikasi Dibutuhkan',
+          style: AppText.cardHeading(
+            color: isDark ? AppColors.inkDark : AppColors.ink,
+          ),
+        ),
+        content: Text(
+          'StoryLoka membutuhkan izin notifikasi agar dapat mengirimkan pengingat membaca harian dan stopwatch sesi membaca Anda. Silakan aktifkan izin di pengaturan perangkat.',
+          style: AppText.body(
+            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+          ),
+        ),
+        actions: [
+          TertiaryButton(
+            label: 'Batal',
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          PrimaryButton(
+            label: 'Buka Pengaturan',
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await Geolocator.openAppSettings();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   String _formatTimeOfDay(TimeOfDay time) {
@@ -152,63 +200,26 @@ class _ProfilePageState extends State<ProfilePage> {
     return '$hour:$minute';
   }
 
-  void _confirmLogout(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showDialog<void>(
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await AppDialog.showConfirm(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: isDark ? AppColors.surfaceDark : AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-          ),
-          title: Text(
-            'Konfirmasi Keluar',
-            style: AppText.cardHeading(
-              color: isDark ? AppColors.inkDark : AppColors.ink,
-            ),
-          ),
-          content: Text(
-            'Apakah Anda yakin ingin keluar dari akun ini? Sesi Anda akan dihapus dari perangkat ini.',
-            style: AppText.body(
-              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Batal',
-                style: AppText.button(
-                  color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await NotificationService.instance.cancelDailyReadingReminder();
-                if (context.mounted) {
-                  await context.read<AuthController>().logout();
-                }
-                if (context.mounted) {
-                  context.go('/login');
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: AppColors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
-                ),
-              ),
-              child: const Text('Keluar'),
-            ),
-          ],
-        );
-      },
+      title: 'Konfirmasi Keluar',
+      message:
+          'Apakah Anda yakin ingin keluar dari akun ini? Sesi Anda akan dihapus dari perangkat ini.',
+      cancelLabel: 'Batal',
+      confirmLabel: 'Keluar',
+      isDestructive: true,
     );
+
+    if (confirmed == true && context.mounted) {
+      await NotificationService.instance.cancelDailyReadingReminder();
+      if (context.mounted) {
+        await context.read<AuthController>().logout();
+      }
+      if (context.mounted) {
+        context.go('/login');
+      }
+    }
   }
 
   @override
@@ -236,16 +247,16 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
-      body: RefreshIndicator(
-        color: AppColors.deepTeal,
-        onRefresh: _loadSummary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pageMargin,
-            vertical: AppSpacing.l,
-          ),
-          child: Column(
+      body: ResponsiveBody(
+        child: RefreshIndicator(
+          color: context.primaryColor,
+          onRefresh: _loadSummary,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.l,
+            ),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. Header Profile Card
@@ -256,34 +267,38 @@ class _ProfilePageState extends State<ProfilePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Avatar Lingkaran (Tap untuk Edit)
-                        GestureDetector(
-                          onTap: () => context.push('/profile/edit'),
-                          child: Stack(
-                            children: [
-                              _buildAvatarWidget(avatarUrl, isDark),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.deepTeal,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: isDark
-                                          ? AppColors.surfaceDark
-                                          : AppColors.white,
-                                      width: 1.5,
+                        Semantics(
+                          label: 'Ubah foto profil',
+                          button: true,
+                          child: GestureDetector(
+                            onTap: () => context.push('/profile/edit'),
+                            child: Stack(
+                              children: [
+                                _buildAvatarWidget(avatarUrl, isDark),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: context.primaryColor,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isDark
+                                            ? AppColors.surfaceDark
+                                            : AppColors.white,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.edit_rounded,
+                                      size: AppSpacing.iconXs,
+                                      color: AppColors.white,
                                     ),
                                   ),
-                                  child: const Icon(
-                                    Icons.edit_rounded,
-                                    size: 12,
-                                    color: AppColors.white,
-                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.m),
@@ -375,19 +390,13 @@ class _ProfilePageState extends State<ProfilePage> {
                             },
                           ),
                         ),
-                        TextButton.icon(
+                        TertiaryButton(
+                          label: 'Edit Profil',
+                          icon: Icons.edit_outlined,
                           onPressed: () async {
                             await context.push('/profile/edit');
                             _loadSummary();
                           },
-                          icon: const Icon(Icons.edit_outlined, size: 16),
-                          label: const Text('Edit Profil'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.primaryDark
-                                : AppColors.deepTeal,
-                            textStyle: AppText.button(fontSize: 13),
-                          ),
                         ),
                       ],
                     ),
@@ -403,10 +412,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.bar_chart_rounded,
                           size: 20,
-                          color: AppColors.deepTeal,
+                          color: context.primaryColor,
                         ),
                         const SizedBox(width: AppSpacing.s),
                         Expanded(
@@ -423,7 +432,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: AppSpacing.m),
                     if (_isLoadingSummary)
-                      const LinearProgressIndicator(color: AppColors.deepTeal)
+                      LinearProgressIndicator(color: context.primaryColor)
                     else ...[
                       Text(
                         '$_collectionCount di koleksi • $_wishlistCount wishlist • $_finishedCount selesai',
@@ -476,9 +485,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         borderRadius:
                             BorderRadius.circular(AppSpacing.cardRadius),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.shield_outlined,
-                        color: AppColors.deepTeal,
+                        color: context.primaryColor,
                         size: 24,
                       ),
                     ),
@@ -534,70 +543,77 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: isDark ? AppColors.inkDark : AppColors.ink,
                       ),
                     ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<ThemeMode>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.light,
-                            label: Text('Light', maxLines: 1),
-                            icon: Icon(Icons.light_mode_outlined, size: 16),
-                          ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.dark,
-                            label: Text('Dark', maxLines: 1),
-                            icon: Icon(Icons.dark_mode_outlined, size: 16),
-                          ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.system,
-                            label: Text('Auto', maxLines: 1),
-                            icon: Icon(Icons.brightness_auto_outlined, size: 16),
-                          ),
-                        ],
-                        selected: {themeController.userPreferenceMode},
-                        onSelectionChanged: (newSelection) {
-                          themeController.setThemeMode(newSelection.first);
-                        },
-                        style: ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          padding: const WidgetStatePropertyAll(
-                            EdgeInsets.symmetric(horizontal: 4),
-                          ),
-                          backgroundColor:
-                              WidgetStateProperty.resolveWith((states) {
-                            if (states.contains(WidgetState.selected)) {
-                              return isDark
-                                  ? AppColors.primaryDark
-                                  : AppColors.deepTeal;
-                            }
-                            return Colors.transparent;
-                          }),
-                          foregroundColor:
-                              WidgetStateProperty.resolveWith((states) {
-                            if (states.contains(WidgetState.selected)) {
-                              return AppColors.white;
-                            }
-                            return isDark
-                                ? AppColors.inkDark
-                                : AppColors.ink;
-                          }),
-                        ),
-                      ),
+                    FilterTabs(
+                      tabs: const ['Light', 'Dark', 'Auto'],
+                      selectedIndex: themeController.userPreferenceMode == ThemeMode.light
+                          ? 0
+                          : themeController.userPreferenceMode == ThemeMode.dark
+                              ? 1
+                              : 2,
+                      onTabSelected: (index) {
+                        const modes = [
+                          ThemeMode.light,
+                          ThemeMode.dark,
+                          ThemeMode.system,
+                        ];
+                        themeController.setThemeMode(modes[index]);
+                      },
                     ),
                     const SizedBox(height: AppSpacing.s),
-                    Text(
-                      themeController.userPreferenceMode == ThemeMode.system
-                          ? LightSensorService.instance.autoModeDescription
-                          : themeController.userPreferenceMode == ThemeMode.dark
-                              ? 'Tema gelap aktif.'
-                              : 'Tema terang (Warm Ivory) aktif.',
-                      style: AppText.caption(
-                        color: isDark
-                            ? AppColors.mutedDark
-                            : AppColors.mutedGray,
-                      ),
+                    ListenableBuilder(
+                      listenable: LightSensorService.instance,
+                      builder: (context, _) {
+                        final lightService = LightSensorService.instance;
+                        final String descText;
+                        if (themeController.userPreferenceMode == ThemeMode.system) {
+                          if (lightService.isSensorAvailable && lightService.currentLux != null) {
+                            descText = 'Cahaya sekitar: ${lightService.currentLux!.toStringAsFixed(0)} lux';
+                          } else {
+                            descText = lightService.autoModeDescription;
+                          }
+                        } else if (themeController.userPreferenceMode == ThemeMode.dark) {
+                          descText = 'Tema gelap aktif.';
+                        } else {
+                          descText = 'Tema terang (Warm Ivory) aktif.';
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              descText,
+                              style: AppText.caption(
+                                color: isDark
+                                    ? AppColors.mutedDark
+                                    : AppColors.mutedGray,
+                              ),
+                            ),
+                            if (kDebugMode &&
+                                themeController.userPreferenceMode == ThemeMode.system) ...[
+                              const SizedBox(height: AppSpacing.s),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Debug: Percepat hysteresis (1 dtk)',
+                                    style: AppText.caption(
+                                      color: isDark
+                                          ? AppColors.mutedDark
+                                          : AppColors.mutedGray,
+                                    ),
+                                  ),
+                                  Switch.adaptive(
+                                    value: lightService.fastHysteresis,
+                                    onChanged: (val) {
+                                      lightService.fastHysteresis = val;
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -680,7 +696,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: AppSpacing.l),
 
-              // 6. Section Notifikasi (UI Saja — PRD §7.8)
+              // 6. Section Notifikasi — PRD §10.5 & Fase R4
               Text(
                 'Notifikasi',
                 style: AppText.sectionHeading(
@@ -717,26 +733,46 @@ class _ProfilePageState extends State<ProfilePage> {
                       value: _readingReminderEnabled,
                       onChanged: (val) async {
                         if (val) {
-                          final granted = await NotificationService.instance
-                              .requestPermission();
-                          if (!granted) {
+                          await NotificationService.instance.requestPermission();
+                          final allowed = await NotificationService.instance
+                              .areNotificationsEnabled();
+                          if (!allowed) {
                             if (context.mounted) {
-                              AppSnackBar.show(
-                                context,
-                                message:
-                                    'Izin notifikasi ditolak. Aktifkan izin notifikasi StoryLoka di Pengaturan perangkat.',
-                                type: SnackBarType.warning,
-                              );
+                              setState(() => _readingReminderEnabled = false);
+                              await _showNotificationPermissionDialog();
                             }
                             return;
                           }
+                          setState(() => _readingReminderEnabled = true);
+                          await NotificationService.instance.saveReminderSettings(
+                            enabled: true,
+                            hour: _reminderTime.hour,
+                            minute: _reminderTime.minute,
+                          );
+                          final pending = await NotificationService.instance
+                              .getPendingNotificationRequests();
+                          if (context.mounted) {
+                            AppSnackBar.show(
+                              context,
+                              message:
+                                  'Pengingat membaca dijadwalkan pukul ${_formatTimeOfDay(_reminderTime)} (${pending.length} notifikasi aktif).',
+                              type: SnackBarType.success,
+                            );
+                          }
+                        } else {
+                          setState(() => _readingReminderEnabled = false);
+                          await NotificationService.instance.saveReminderSettings(
+                            enabled: false,
+                            hour: _reminderTime.hour,
+                            minute: _reminderTime.minute,
+                          );
+                          if (context.mounted) {
+                            AppSnackBar.show(
+                              context,
+                              message: 'Pengingat membaca harian dinonaktifkan.',
+                            );
+                          }
                         }
-                        setState(() => _readingReminderEnabled = val);
-                        await NotificationService.instance.saveReminderSettings(
-                          enabled: val,
-                          hour: _reminderTime.hour,
-                          minute: _reminderTime.minute,
-                        );
                       },
                     ),
                     if (_readingReminderEnabled) ...[
@@ -753,14 +789,9 @@ class _ProfilePageState extends State<ProfilePage> {
                             color: isDark ? AppColors.inkDark : AppColors.ink,
                           ),
                         ),
-                        trailing: OutlinedButton(
+                        trailing: TertiaryButton(
+                          label: 'Ubah Jam',
                           onPressed: _pickReminderTime,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.primaryDark
-                                : AppColors.deepTeal,
-                          ),
-                          child: const Text('Ubah Jam'),
                         ),
                       ),
                     ],
@@ -794,26 +825,114 @@ class _ProfilePageState extends State<ProfilePage> {
                   value: _stopwatchNotificationEnabled,
                   onChanged: (val) async {
                     if (val) {
-                      final granted = await NotificationService.instance
-                          .requestPermission();
-                      if (!granted) {
+                      await NotificationService.instance.requestPermission();
+                      final allowed = await NotificationService.instance
+                          .areNotificationsEnabled();
+                      if (!allowed) {
                         if (context.mounted) {
-                          AppSnackBar.show(
-                            context,
-                            message:
-                                'Izin notifikasi ditolak. Aktifkan izin notifikasi StoryLoka di Pengaturan perangkat.',
-                            type: SnackBarType.warning,
-                          );
+                          setState(() => _stopwatchNotificationEnabled = false);
+                          await _showNotificationPermissionDialog();
                         }
                         return;
                       }
+                      setState(() => _stopwatchNotificationEnabled = true);
+                      await NotificationService.instance
+                          .setStopwatchNotifEnabled(true);
+                      if (context.mounted) {
+                        AppSnackBar.show(
+                          context,
+                          message:
+                              'Notifikasi stopwatch sesi membaca berhasil diaktifkan.',
+                          type: SnackBarType.success,
+                        );
+                      }
+                    } else {
+                      setState(() => _stopwatchNotificationEnabled = false);
+                      await NotificationService.instance
+                          .setStopwatchNotifEnabled(false);
+                      if (context.mounted) {
+                        AppSnackBar.show(
+                          context,
+                          message:
+                              'Notifikasi stopwatch sesi membaca dinonaktifkan.',
+                        );
+                      }
                     }
-                    setState(() => _stopwatchNotificationEnabled = val);
-                    await NotificationService.instance
-                        .setStopwatchNotifEnabled(val);
                   },
                 ),
               ),
+
+              // Tombol Debug Notifikasi (kDebugMode Saja) — Butir 6
+              if (kDebugMode) ...[
+                const SizedBox(height: AppSpacing.m),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SecondaryButton(
+                        label: 'Kirim notifikasi tes sekarang',
+                        icon: Icons.notifications_active_outlined,
+                        onPressed: () async {
+                          await NotificationService.instance.requestPermission();
+                          final allowed = await NotificationService.instance
+                              .areNotificationsEnabled();
+                          if (!allowed) {
+                            if (context.mounted) {
+                              await _showNotificationPermissionDialog();
+                            }
+                            return;
+                          }
+                          await NotificationService.instance
+                              .showInstantTestNotification();
+                          if (context.mounted) {
+                            AppSnackBar.show(
+                              context,
+                              message:
+                                  'Notifikasi tes langsung terkirim! Cek bilah notifikasi.',
+                              type: SnackBarType.success,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SecondaryButton(
+                        label: 'Jadwalkan tes 2 menit lagi',
+                        icon: Icons.alarm_rounded,
+                        onPressed: () async {
+                          await NotificationService.instance.requestPermission();
+                          final allowed = await NotificationService.instance
+                              .areNotificationsEnabled();
+                          if (!allowed) {
+                            if (context.mounted) {
+                              await _showNotificationPermissionDialog();
+                            }
+                            return;
+                          }
+                          final scheduled = await NotificationService.instance
+                              .scheduleTestNotificationInMinutes(2);
+                          final pending = await NotificationService.instance
+                              .getPendingNotificationRequests();
+                          if (context.mounted) {
+                            final timeStr =
+                                '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}';
+                            AppSnackBar.show(
+                              context,
+                              message:
+                                  'Notifikasi tes dijadwalkan pukul $timeStr (${pending.length} aktif).',
+                              type: SnackBarType.success,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: AppSpacing.xl),
 
               // 7. Demo Controls section (kDebugMode)
@@ -831,16 +950,18 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.bug_report_outlined,
                             size: 20,
-                            color: AppColors.deepTeal,
+                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                           ),
                           const SizedBox(width: AppSpacing.s),
                           Expanded(
                             child: Text(
                               'Status Demo Controls:',
-                              style: AppText.bodyMedium(color: AppColors.ink),
+                              style: AppText.bodyMedium(
+                                color: isDark ? AppColors.inkDark : AppColors.ink,
+                              ),
                             ),
                           ),
                         ],
@@ -851,7 +972,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         '• Simulasi Error: ${demoControls.simulateNetworkError ? "Aktif" : "Nonaktif"}\n'
                         '• Latensi Lambat: ${demoControls.simulateSlowLatency ? "Aktif (2s)" : "Normal"}\n'
                         '• Lewati Biometrik: ${demoControls.bypassBiometric ? "Aktif" : "Nonaktif"}',
-                        style: AppText.metadata(color: AppColors.ink),
+                        style: AppText.metadata(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.m),
                       PrimaryButton(
@@ -879,8 +1002,9 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildAvatarWidget(String? avatarUrl, bool isDark) {
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
@@ -888,8 +1012,8 @@ class _ProfilePageState extends State<ProfilePage> {
         return ClipOval(
           child: Image.file(
             File(avatarUrl),
-            width: 64,
-            height: 64,
+            width: AppSpacing.avatarLargeRadius * 2,
+            height: AppSpacing.avatarLargeRadius * 2,
             fit: BoxFit.cover,
           ),
         );
@@ -897,8 +1021,8 @@ class _ProfilePageState extends State<ProfilePage> {
         return ClipOval(
           child: Image.network(
             avatarUrl,
-            width: 64,
-            height: 64,
+            width: AppSpacing.avatarLargeRadius * 2,
+            height: AppSpacing.avatarLargeRadius * 2,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => _defaultAvatar(isDark),
           ),
@@ -910,7 +1034,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _defaultAvatar(bool isDark) {
     return CircleAvatar(
-      radius: 32,
+      radius: AppSpacing.avatarLargeRadius,
       backgroundColor: isDark
           ? AppColors.primaryDark.withValues(alpha: 0.3)
           : AppColors.sageGreen.withValues(alpha: 0.4),

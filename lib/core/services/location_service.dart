@@ -7,6 +7,7 @@ import '../theme/app_spacing.dart';
 import '../theme/app_text.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_snack_bar.dart';
+import '../widgets/app_text_field.dart';
 
 /// Service LBS pencarian toko buku terdekat — PRD §9.4.
 class LocationService {
@@ -189,16 +190,11 @@ class LocationService {
                 ),
               ),
               const SizedBox(height: AppSpacing.m),
-              TextField(
+              AppTextField(
                 controller: locationController,
                 autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Contoh: Jakarta Selatan, Bandung, Yogyakarta',
-                  prefixIcon: const Icon(Icons.location_city_rounded),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
-                  ),
-                ),
+                hintText: 'Contoh: Jakarta Selatan, Bandung, Yogyakarta',
+                prefixIcon: const Icon(Icons.location_city_rounded),
               ),
               const SizedBox(height: AppSpacing.l),
               PrimaryButton(

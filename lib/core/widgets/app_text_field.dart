@@ -71,8 +71,7 @@ class _AppTextFieldState extends State<AppTextField> {
         if (widget.label != null) ...[
           Text(
             widget.label!,
-            style: AppText.button(
-              fontSize: 13,
+            style: AppText.caption(
               color: isDark ? AppColors.inkDark : AppColors.ink,
             ).copyWith(fontWeight: FontWeight.w600),
           ),

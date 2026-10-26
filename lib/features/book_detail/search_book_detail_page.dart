@@ -215,6 +215,9 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final book = widget.book;
     final synopsis = _cleanSynopsis(book.synopsis);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final useColumnLayout = screenWidth < 340 || textScale > 1.15;
 
     return Scaffold(
       appBar: AppBar(
@@ -284,7 +287,24 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
 
             // Tombol Aksi: Add to Collection & Add to Wishlist
             if (_isCheckingStatus)
-              const Center(child: CircularProgressIndicator())
+              Center(child: CircularProgressIndicator(color: context.primaryColor))
+            else if (useColumnLayout)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PrimaryButton(
+                    label: _isInCollection ? 'Added to Collection' : 'Add to Collection',
+                    isLoading: _isAddingCollection,
+                    onPressed: _isInCollection ? null : _addToCollection,
+                  ),
+                  const SizedBox(height: AppSpacing.s),
+                  SecondaryButton(
+                    label: _isInWishlist ? 'Added to Wishlist' : 'Add to Wishlist',
+                    isLoading: _isAddingWishlist,
+                    onPressed: (_isInWishlist || _isInCollection) ? null : _addToWishlist,
+                  ),
+                ],
+              )
             else
               Row(
                 children: [
@@ -336,24 +356,14 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
                     const SizedBox(height: AppSpacing.xs),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: TextButton(
+                      child: TertiaryButton(
+                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                         onPressed: () {
                           setState(() {
                             _isSynopsisExpanded = !_isSynopsisExpanded;
                           });
                         },
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(50, 30),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                          style: AppText.button(
-                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                            fontSize: 13,
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -398,15 +408,6 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
                             color: isDark ? AppColors.softApricot : AppColors.deepTeal,
                           ),
                         ),
-                        if (book.publisher != null && book.publisher!.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            'Penerbit: ${book.publisher}',
-                            style: AppText.caption(
-                              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -462,22 +463,30 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
 
   Widget _buildMetaItem(IconData icon, String text) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: AppText.caption(
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: (screenWidth - 48).clamp(160.0, 520.0)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
             color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
           ),
-        ),
-      ],
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption(
+                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

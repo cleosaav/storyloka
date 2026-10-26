@@ -1,22 +1,58 @@
 import 'package:flutter/material.dart';
 
+import '../config/env.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_text.dart';
 import 'app_button.dart';
 import 'app_card.dart';
 
-/// Layar error konfigurasi ketika SUPABASE_URL / SUPABASE_ANON_KEY belum diisi — PRD §3.
+/// Layar error konfigurasi ketika file .env tidak ditemukan,
+/// atau variabel wajib seperti SUPABASE_URL / SUPABASE_ANON_KEY kosong — PRD §3 & Fase R1.
 class ConfigErrorPage extends StatelessWidget {
   final VoidCallback? onRetry;
+  final bool? isFileNotFound;
+  final List<String>? missingVariables;
+  final String? errorMessage;
 
-  const ConfigErrorPage({super.key, this.onRetry});
+  const ConfigErrorPage({
+    super.key,
+    this.onRetry,
+    this.isFileNotFound,
+    this.missingVariables,
+    this.errorMessage,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryTextColor = isDark ? AppColors.inkDark : AppColors.ink;
     final secondaryTextColor = isDark ? AppColors.mutedDark : AppColors.mutedGray;
+
+    final fileMissing = isFileNotFound ?? Env.isEnvFileNotFound;
+    final missing = missingVariables ?? Env.missingVariables;
+
+    String headingText;
+    String descriptionText;
+
+    if (errorMessage != null && errorMessage!.isNotEmpty) {
+      headingText = 'Inisialisasi Backend Gagal';
+      descriptionText = errorMessage!;
+    } else if (fileMissing) {
+      headingText = 'File .env Tidak Ditemukan';
+      descriptionText =
+          'File konfigurasi .env tidak ditemukan di direktori proyek StoryLoka. '
+          'Salin .env.example menjadi .env dan isi kredensial yang dibutuhkan.';
+    } else if (missing.isNotEmpty) {
+      headingText = 'Variabel .env Belum Lengkap';
+      descriptionText =
+          'Aplikasi berjalan dalam mode nyata namun variabel berikut masih kosong di file .env:\n'
+          '${missing.map((v) => '• $v').join('\n')}';
+    } else {
+      headingText = 'Konfigurasi Belum Lengkap';
+      descriptionText =
+          'Aplikasi membutuhkan kredensial Supabase untuk terhubung ke server backend.';
+    }
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.bgDark : AppColors.warmIvory,
@@ -44,13 +80,13 @@ class ConfigErrorPage extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.l),
                   Text(
-                    'Konfigurasi Belum Lengkap',
+                    headingText,
                     style: AppText.cardHeading(color: primaryTextColor),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.m),
                   Text(
-                    'Aplikasi membutuhkan kredensial Supabase untuk terhubung ke server backend.',
+                    descriptionText,
                     style: AppText.body(color: secondaryTextColor),
                     textAlign: TextAlign.center,
                   ),
@@ -75,9 +111,13 @@ class ConfigErrorPage extends StatelessWidget {
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
-                          '1. Buka file .env di folder StoryLoka Anda.\n'
-                          '2. Salin SUPABASE_URL & SUPABASE_ANON_KEY dari dashboard Supabase.\n'
-                          '3. Simpan file lalu tekan tombol di bawah untuk memuat ulang.',
+                          fileMissing
+                              ? '1. Buat file .env di folder StoryLoka (salin dari .env.example).\n'
+                                '2. Masukkan SUPABASE_URL dan SUPABASE_ANON_KEY.\n'
+                                '3. Tekan tombol di bawah untuk mencoba kembali.'
+                              : '1. Buka file .env di folder StoryLoka Anda.\n'
+                                '2. Pastikan variabel di atas telah terisi dengan benar.\n'
+                                '3. Simpan file lalu tekan tombol di bawah untuk memuat ulang.',
                           style: AppText.caption(color: secondaryTextColor),
                         ),
                       ],
@@ -87,7 +127,7 @@ class ConfigErrorPage extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: PrimaryButton(
-                      label: 'Periksa Ulang Konfigurasi',
+                      label: 'Coba Lagi',
                       icon: Icons.refresh_rounded,
                       onPressed: onRetry,
                     ),
