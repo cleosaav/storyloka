@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/config/env.dart';
+import '../../remote/open_library_api.dart';
 import '../book_search_repository.dart';
 
 /// Exception umum untuk error pada Google Books API.
@@ -53,10 +54,15 @@ class GoogleBooksDetailCacheEntry {
 
 /// Implementasi nyata BookSearchRepository menggunakan Google Books API — PRD §9.1 & Fase R2/S3.
 class GoogleBooksRepository implements BookSearchRepository {
-  GoogleBooksRepository({http.Client? client})
-      : _client = client ?? http.Client();
+  GoogleBooksRepository({
+    http.Client? client,
+    OpenLibraryApi? openLibraryApi,
+  })  : _client = client ?? http.Client(),
+        openLibraryApi =
+            openLibraryApi ?? OpenLibraryApi(client: client);
 
   final http.Client _client;
+  final OpenLibraryApi openLibraryApi;
   final Map<String, GoogleBooksDetailCacheEntry> _detailCache = {};
 
   /// Jumlah entri detail aktif di cache memori.
@@ -467,5 +473,46 @@ class GoogleBooksRepository implements BookSearchRepository {
         .replaceAll('&nbsp;', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  @override
+  Future<BookSearchResult> enrich(BookSearchResult b) async {
+    final rawIsbn = b.isbn;
+    if (rawIsbn == null || rawIsbn.trim().isEmpty) {
+      return b;
+    }
+    final cleanIsbn = OpenLibraryApi.normalizeIsbn(rawIsbn);
+    if (cleanIsbn.isEmpty) {
+      return b;
+    }
+
+    final needsSynopsis = b.synopsis == null || b.synopsis!.trim().isEmpty;
+    final needsCover = b.coverUrl == null || b.coverUrl!.trim().isEmpty;
+
+    if (!needsSynopsis && !needsCover) {
+      return b;
+    }
+
+    final Future<String?> synopsisFuture = needsSynopsis
+        ? openLibraryApi.fetchSynopsis(cleanIsbn)
+        : Future.value(null);
+    final Future<String?> coverFuture = needsCover
+        ? openLibraryApi.fetchCoverUrl(cleanIsbn)
+        : Future.value(null);
+
+    final results = await Future.wait<String?>([synopsisFuture, coverFuture]);
+    final olSynopsis = results[0];
+    final olCover = results[1];
+
+    final hasNewSynopsis =
+        needsSynopsis && olSynopsis != null && olSynopsis.isNotEmpty;
+    final hasNewCover =
+        needsCover && olCover != null && olCover.isNotEmpty;
+
+    return b.copyWith(
+      synopsis: hasNewSynopsis ? olSynopsis : b.synopsis,
+      coverUrl: hasNewCover ? olCover : b.coverUrl,
+      synopsisSource: hasNewSynopsis ? 'Open Library' : b.synopsisSource,
+    );
   }
 }

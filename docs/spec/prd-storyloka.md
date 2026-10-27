@@ -511,6 +511,19 @@ Skema lengkap + RPC + RLS + Storage ada di **Lampiran A** (salin ke `supabase/sc
   - `price_amount/currency` ← `saleInfo.retailPrice` atau `saleInfo.listPrice` (`amount`, `currencyCode`); jika tidak ada → null
 - Tangani: timeout 15 detik, status non-200, `items` null (hasil kosong).
 
+### 9.1b Fallback Open Library
+- Banyak buku (terutama terbitan Indonesia) pada Google Books API memiliki `volumeInfo.description` atau `imageLinks.thumbnail` yang kosong/null.
+- Untuk mengatasi ini, aturan "data buku hanya dari Google Books API" diperluas dengan fallback sekunder **Open Library API** (`OpenLibraryApi`):
+  - `fetchSynopsis(isbn)`:
+    1. GET `https://openlibrary.org/isbn/{isbn}.json` (ikuti redirect). Status != 200 → `null`.
+    2. Jika field `description` pada edition ada & tidak kosong → pakai itu.
+    3. Jika tidak, ambil `works[0].key`, lalu GET `https://openlibrary.org{key}.json` dan baca `description`.
+    4. Mendukung format String maupun objek `{type, value}`.
+  - `fetchCoverUrl(isbn)`: HEAD `https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false`; status 200 → URL tersebut, selain itu `null`.
+  - Semua request: header `User-Agent: StoryLoka/1.0 (student project)`, timeout 15 detik, menangkap semua error jaringan/timeout/parse sebagai `null` (tanpa melempar exception ke UI).
+  - Dipanggil lewat method `Future<BookResult> enrich(BookResult b)` pada `BookSearchRepository` secara paralel (`Future.wait`) HANYA di layar detail hasil pencarian (`search_detail`) dan saat Add Book setelah user memilih satu buku, bukan pada daftar hasil search massal. Data dari Google Books tidak boleh ditimpa kalau sudah terisi.
+  - Normalisasi ISBN sebelum dipakai (buang tanda hubung/spasi).
+
 ### 9.2 Konversi Mata Uang
 - **Mata uang:** minimal 3; sediakan **IDR, USD, EUR, JPY, SGD** (5).
 - Sumber kurs: `GET https://open.er-api.com/v6/latest/{BASE}` (tanpa key). Ambil `rates` dan `time_last_update_utc`.

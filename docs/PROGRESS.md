@@ -7,8 +7,8 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 ## Ringkasan Progres
 
 - **Tahap saat ini:** Tahap S (Stabilisasi & Penyempurnaan Fitur)
-- **Fase terakhir selesai:** Fase S7 — Isolasi Data Kesan & Pesan Pengguna (Perbaikan Bug S7)
-- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S7 telah selesai. Seluruh tes lulus (100%).
+- **Fase terakhir selesai:** Fase S8 — Integrasi Fallback Open Library (PRD §9.1 & §9.1b)
+- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S8 telah selesai. Seluruh tes lulus (100%).
 
 ---
 
@@ -1700,5 +1700,54 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
   - `flutter test test/fase_s7_test.dart`: **12/12 tests passed** (100% lolos).
   - `flutter test`: **318/318 tests passed** (100% lolos di seluruh aplikasi).
 - **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md` (Penyimpangan PRD §7.7.1 & §8.3).
+
+---
+
+### Fase S8 — Integrasi Fallback Open Library (SELESAI)
+
+- **Latar Belakang & Masalah:**
+  - Banyak buku (terutama buku terbitan Indonesia) pada respons Google Books API memiliki field `volumeInfo.description` dan `imageLinks` yang kosong/null, menyebabkan sinopsis atau gambar sampul buku tidak tampil.
+- **Cakupan yang Selesai:**
+  - **Klien Remote Open Library (`lib/data/remote/open_library_api.dart`):**
+    - `fetchSynopsis(String isbn)`:
+      - Normalisasi ISBN (membersihkan tanda hubung dan spasi).
+      - Mengirim GET ke `https://openlibrary.org/isbn/{isbn}.json`.
+      - Membaca field `description` dari edisi; jika kosong, mengambil `works[0].key` dan membaca `https://openlibrary.org{key}.json`.
+      - Menangani `description` baik berupa `String` maupun objek Map `{type, value}` dengan `trim()`; nilai kosong dianggap `null`.
+    - `fetchCoverUrl(String isbn)`:
+      - Mengirim HEAD ke `https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false`.
+      - Status HTTP 200 mengembalikan URL cover tersebut; status lain atau error mengembalikan `null`.
+    - Seluruh request menggunakan header resmi `User-Agent: StoryLoka/1.0 (student project)`, batas timeout 15 detik, dan error handling aman (tidak melempar exception ke UI).
+  - **Repositori & Enrichment (`BookSearchRepository.enrich`):**
+    - Menambahkan `typedef BookResult = BookSearchResult;` dan definisi metode `Future<BookSearchResult> enrich(BookSearchResult b);`.
+    - Mengimplementasikan `enrich` pada `GoogleBooksRepository`, `CompositeBookSearchRepository`, `OpenLibraryRepository`, dan `FakeBookSearchRepository`.
+    - Aturan enrichment:
+      - Jika `isbn` null atau kosong, mengembalikan buku apa adanya tanpa request jaringan.
+      - Hanya memanggil Open Library untuk field yang kosong: sinopsis dan/atau cover. Jika kedua data sudah lengkap, langsung return tanpa memicu request.
+      - Panggilan `fetchSynopsis` dan `fetchCoverUrl` berjalan secara paralel (`Future.wait<String?>`).
+      - Data dari Google Books tidak pernah ditimpa oleh data Open Library.
+  - **Integrasi UI & Fallback (`SearchBookDetailPage` di `/book/search`):**
+    - Pemanggilan `enrich` dilakukan secara tertarget HANYA di `SearchBookDetailPage` saat detail buku dibuka dan saat Add Book setelah pengguna memilih satu buku. Tidak dipanggil pada daftar hasil pencarian massal untuk menghemat bandwidth.
+    - Menampilkan indikator loading ringan (`_isEnriching`) tanpa memblokir tampilan data Google Books yang sudah ada.
+    - Sinopsis tetap kosong menampilkan *"Sinopsis tidak tersedia"*.
+    - Cover tetap kosong menampilkan placeholder cover sage botani bawaan.
+    - Menjamin sanitasi cover URL selalu `https://` dan widget cover memiliki `errorWidget`/placeholder.
+  - **Dokumentasi & Regulasi PRD:**
+    - Memperbarui `docs/spec/prd-storyloka.md` dengan sub-bagian `### 9.1b Fallback Open Library`.
+    - Mencatat perluasan aturan data buku di `docs/DEVIATIONS.md`.
+    - Menjaga arsitektur PRD: UI tidak pernah memanggil `http` secara langsung.
+  - **Pengujian Unit (`test/open_library_enrich_test.dart`):**
+    - Menguji parsing `description` bentuk String, bentuk Map `{type, value}`, dan null/kosong.
+    - Menguji pengambilan sinopsis langsung dari edition maupun fallback ke works.
+    - Menguji verifikasi HEAD request cover URL status 200 vs 404.
+    - Menguji `enrich` tidak memanggil Open Library jika data sudah lengkap.
+    - Menguji `enrich` tidak menimpa data Google Books yang sudah ada.
+    - Menguji penanganan ISBN null/kosong.
+- **Hasil Verifikasi:**
+  - `dart analyze lib test`: **0 issues found** (100% bersih).
+  - `flutter test test/open_library_enrich_test.dart`: **10/10 tests passed** (100% lolos).
+  - `flutter test`: **328/328 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
 
 

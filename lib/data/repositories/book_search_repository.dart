@@ -136,7 +136,10 @@ class BookSearchResult {
   }
 }
 
-/// Kontrak pencarian dan detail buku — PRD §13.0 & Fase S3.
+/// Alias BookResult untuk BookSearchResult — PRD §9.1b.
+typedef BookResult = BookSearchResult;
+
+/// Kontrak pencarian dan detail buku — PRD §13.0, §9.1 & Fase S3.
 abstract class BookSearchRepository {
   /// Cari buku berdasarkan query dan filter.
   Future<List<BookSearchResult>> search(
@@ -151,4 +154,7 @@ abstract class BookSearchRepository {
 
   /// Ambil detail lengkap buku berdasarkan Google Books ID — Fase S3.
   Future<BookSearchResult?> getDetail(String googleBooksId);
+
+  /// Memperkaya buku dengan metadata Open Library (sinopsis dan/atau cover) bila kosong — PRD §9.1b.
+  Future<BookSearchResult> enrich(BookSearchResult b);
 }

@@ -552,9 +552,21 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
    - **Keputusan:** Menghapus seluruh fallback ID palsu (`default_user`, `demo`, `demo_user`) yang masih tersisa pada mode nyata (`search_book_detail_page.dart`, `deepseek_chat_repository.dart`, `gemini_chat_repository.dart`, `local_repositories.dart`). Tanpa pengguna login dengan UUID valid (RFC 4122), repository melempar error terkontrol `StateError('NO_AUTHENTICATED_USER')` dan UI mengarahkan pengguna ke alur login via SnackBar peringatan.
    - **Alasan:** Mencegah percampuran data pribadi antar-akun pada perangkat bersama dan memastikan setiap data personal (koleksi, riwayat baca, skor, chat) terisolasi mutlak di bawah UUID akun masing-masing.
 
-4. **Pembaruan Deskripsi Menu Kartu di Tools Page**
-   - **Keputusan:** Deskripsi kartu menu Kesan & Pesan pada `tools_page.dart` diperbarui dari deskripsi form/kirim menjadi *"Baca kesan dan pesan dari tim kami"*.
-   - **Alasan:** Memberikan informasi yang jujur dan selaras dengan fungsi halaman yang kini murni baca saja.
+---
+
+## Fase S8 — Integrasi Fallback Open Library (PRD §9.1 & §9.1b)
+
+1. **Perluasan Sumber Data Buku dengan Fallback Open Library**
+   - **Keputusan:** Memperluas aturan PRD Bagian 9.1 ("data buku hanya dari Google Books API") dengan fallback cerdas ke Open Library API (`lib/data/remote/open_library_api.dart`) melalui metode `enrich(BookSearchResult b)` pada abstraksi repositori `BookSearchRepository`.
+   - **Alasan:** Banyak buku (terutama terbitan Indonesia) pada respon Google Books API memiliki field `volumeInfo.description` dan `imageLinks` yang kosong atau null, sehingga sinopsis dan gambar sampul tidak muncul. Open Library menyediakan endpoint edisi dan karya (`works`) serta server cover yang dapat mengisi kekosongan data tersebut berdasarkan nomor ISBN.
+   - **Aturan & Batasan Arsitektur:**
+     - Query utama pencarian buku tetap 100% menggunakan Google Books API tanpa mengubah alur query yang ada.
+     - Fallback Open Library hanya dipanggil secara tertarget (on-demand) pada layar detail (`SearchBookDetailPage` di `/book/search`) dan saat penambahan buku setelah pengguna memilih buku. Tidak dipanggil pada daftar hasil pencarian (AddBookPage) untuk menghindari lonjakan beban jaringan (20+ request paralel).
+     - Hanya field yang benar-benar kosong/blank (sinopsis dan/atau cover) yang direquest ke Open Library secara paralel (`Future.wait<String?>`). Jika kedua data sudah lengkap dari Google Books, repositori langsung mengembalikan data tanpa melakukan request jaringan.
+     - Data yang sudah ada dari Google Books tidak pernah ditimpa oleh data Open Library.
+     - Seluruh permintaan HTTP Open Library dilengkapi header `User-Agent: StoryLoka/1.0 (student project)`, timeout 15 detik, dan penanganan error komprehensif (semua timeout, format invalid, dan status != 200 ditangkap menjadi null) sehingga tidak melempar exception ke UI.
+     - Seluruh interaksi jaringan tetap mematuhi aturan arsitektur PRD: UI tidak memanggil `http` langsung, melainkan selalu lewat abstraksi repositori.
+
 
 
 

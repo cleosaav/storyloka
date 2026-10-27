@@ -30,6 +30,7 @@ class SearchBookDetailPage extends StatefulWidget {
 class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   late BookSearchResult _book;
   bool _isLoadingDetail = true;
+  bool _isEnriching = false;
   bool _isCheckingStatus = true;
   bool _isAddingCollection = false;
   bool _isAddingWishlist = false;
@@ -61,10 +62,37 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
       } else {
         setState(() => _isLoadingDetail = false);
       }
+
+      // Fallback Open Library enrichment jika sinopsis atau cover masih kosong — PRD §9.1b
+      final needsSynopsis =
+          _book.synopsis == null || _book.synopsis!.trim().isEmpty;
+      final needsCover =
+          _book.coverUrl == null || _book.coverUrl!.trim().isEmpty;
+      if ((needsSynopsis || needsCover) &&
+          _book.isbn != null &&
+          _book.isbn!.trim().isNotEmpty) {
+        setState(() => _isEnriching = true);
+        try {
+          final enriched = await searchRepo.enrich(_book);
+          if (mounted) {
+            setState(() {
+              _book = enriched;
+              _isEnriching = false;
+            });
+          }
+        } catch (_) {
+          if (mounted) {
+            setState(() => _isEnriching = false);
+          }
+        }
+      }
     } catch (_) {
       // Error (timeout / 429) tidak menghapus data yang sudah ada
       if (mounted) {
-        setState(() => _isLoadingDetail = false);
+        setState(() {
+          _isLoadingDetail = false;
+          _isEnriching = false;
+        });
       }
     }
   }
@@ -445,7 +473,7 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
                           color: isDark ? AppColors.inkDark : AppColors.ink,
                         ),
                       ),
-                      if (_isLoadingDetail)
+                      if (_isLoadingDetail || _isEnriching)
                         const SizedBox(
                           width: 14,
                           height: 14,
@@ -454,7 +482,8 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.s),
-                  if (_isLoadingDetail && (synopsis == 'Sinopsis tidak tersedia' || synopsis.isEmpty)) ...[
+                  if ((_isLoadingDetail || _isEnriching) &&
+                      (synopsis == 'Sinopsis tidak tersedia' || synopsis.isEmpty)) ...[
                     Container(
                       width: double.infinity,
                       height: 14,

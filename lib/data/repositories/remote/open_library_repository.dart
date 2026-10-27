@@ -6,12 +6,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/services/rate_limiter.dart';
+import '../../remote/open_library_api.dart';
 import '../book_search_repository.dart';
 
 /// Implementasi BookSearchRepository menggunakan Open Library API — Fase R2.
 class OpenLibraryRepository implements BookSearchRepository {
   final http.Client _client;
   final RateLimiter _rateLimiter;
+  final OpenLibraryApi openLibraryApi;
 
   static const String _searchBaseUrl = 'https://openlibrary.org/search.json';
   static const String _isbnBaseUrl = 'https://openlibrary.org/api/books';
@@ -37,8 +39,10 @@ class OpenLibraryRepository implements BookSearchRepository {
   OpenLibraryRepository({
     http.Client? client,
     RateLimiter? rateLimiter,
+    OpenLibraryApi? openLibraryApi,
   })  : _client = client ?? http.Client(),
-        _rateLimiter = rateLimiter ?? RateLimiter(maxRequestsPerSecond: 3);
+        _rateLimiter = rateLimiter ?? RateLimiter(maxRequestsPerSecond: 3),
+        openLibraryApi = openLibraryApi ?? OpenLibraryApi(client: client);
 
   @override
   Future<List<BookSearchResult>> search(
@@ -402,5 +406,46 @@ class OpenLibraryRepository implements BookSearchRepository {
         .replaceAll('&nbsp;', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  @override
+  Future<BookSearchResult> enrich(BookSearchResult b) async {
+    final rawIsbn = b.isbn;
+    if (rawIsbn == null || rawIsbn.trim().isEmpty) {
+      return b;
+    }
+    final cleanIsbn = OpenLibraryApi.normalizeIsbn(rawIsbn);
+    if (cleanIsbn.isEmpty) {
+      return b;
+    }
+
+    final needsSynopsis = b.synopsis == null || b.synopsis!.trim().isEmpty;
+    final needsCover = b.coverUrl == null || b.coverUrl!.trim().isEmpty;
+
+    if (!needsSynopsis && !needsCover) {
+      return b;
+    }
+
+    final Future<String?> synopsisFuture = needsSynopsis
+        ? openLibraryApi.fetchSynopsis(cleanIsbn)
+        : Future.value(null);
+    final Future<String?> coverFuture = needsCover
+        ? openLibraryApi.fetchCoverUrl(cleanIsbn)
+        : Future.value(null);
+
+    final results = await Future.wait<String?>([synopsisFuture, coverFuture]);
+    final olSynopsis = results[0];
+    final olCover = results[1];
+
+    final hasNewSynopsis =
+        needsSynopsis && olSynopsis != null && olSynopsis.isNotEmpty;
+    final hasNewCover =
+        needsCover && olCover != null && olCover.isNotEmpty;
+
+    return b.copyWith(
+      synopsis: hasNewSynopsis ? olSynopsis : b.synopsis,
+      coverUrl: hasNewCover ? olCover : b.coverUrl,
+      synopsisSource: hasNewSynopsis ? 'Open Library' : b.synopsisSource,
+    );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../remote/open_library_api.dart';
 import '../book_search_repository.dart';
 import 'google_books_repository.dart';
 import 'open_library_repository.dart';
@@ -36,6 +37,12 @@ class CompositeBookSearchRepository implements GoogleBooksRepository {
         openLibraryRepo = openLibraryRepo ?? OpenLibraryRepository();
 
   final Map<String, GoogleBooksDetailCacheEntry> _detailCache = {};
+
+  @override
+  OpenLibraryApi get openLibraryApi => googleRepo.openLibraryApi;
+
+  @override
+  Future<BookSearchResult> enrich(BookSearchResult b) => googleRepo.enrich(b);
 
   /// Jumlah entri aktif di cache memori.
   int get cacheSize => _cache.length;

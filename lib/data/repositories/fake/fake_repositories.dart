@@ -390,6 +390,28 @@ class FakeBookSearchRepository implements BookSearchRepository {
     if (_demoBooks.isEmpty) return null;
     return _demoBooks[Random().nextInt(_demoBooks.length)];
   }
+
+  @override
+  Future<BookSearchResult> enrich(BookSearchResult b) async {
+    await _simulateLatency(null, demoControls: demoControls);
+    if (b.isbn == null || b.isbn!.trim().isEmpty) {
+      return b;
+    }
+    final needsSynopsis = b.synopsis == null || b.synopsis!.trim().isEmpty;
+    final needsCover = b.coverUrl == null || b.coverUrl!.trim().isEmpty;
+
+    if (!needsSynopsis && !needsCover) {
+      return b;
+    }
+
+    return b.copyWith(
+      synopsis: needsSynopsis ? 'Sinopsis dari Open Library (Demo)' : b.synopsis,
+      coverUrl: needsCover
+          ? 'https://covers.openlibrary.org/b/isbn/${b.isbn}-L.jpg?default=false'
+          : b.coverUrl,
+      synopsisSource: needsSynopsis ? 'Open Library' : b.synopsisSource,
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════

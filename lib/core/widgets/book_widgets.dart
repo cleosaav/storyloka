@@ -27,11 +27,15 @@ class BookCover extends StatelessWidget {
     final hasFiniteWidth = width.isFinite;
     final calculatedHeight = height ?? (hasFiniteWidth ? (width * 3 / 2) : null);
 
+    final safeCoverUrl = (coverUrl != null && coverUrl!.trim().isNotEmpty)
+        ? coverUrl!.trim().replaceFirst(RegExp(r'^http://'), 'https://')
+        : null;
+
     Widget imageContent = AspectRatio(
       aspectRatio: 2 / 3,
-      child: coverUrl != null && coverUrl!.isNotEmpty
+      child: safeCoverUrl != null
           ? CachedNetworkImage(
-              imageUrl: coverUrl!,
+              imageUrl: safeCoverUrl,
               fit: BoxFit.cover,
               placeholder: (context, url) => _buildPlaceholder(),
               errorWidget: (context, url, error) => _buildPlaceholder(),
