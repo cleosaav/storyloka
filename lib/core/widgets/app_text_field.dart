@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -23,6 +24,7 @@ class AppTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final bool autofocus;
   final TextAlign textAlign;
+  final List<TextInputFormatter>? inputFormatters;
 
   const AppTextField({
     super.key,
@@ -42,6 +44,7 @@ class AppTextField extends StatefulWidget {
     this.focusNode,
     this.autofocus = false,
     this.textAlign = TextAlign.start,
+    this.inputFormatters,
   });
 
   @override
@@ -91,6 +94,7 @@ class _AppTextFieldState extends State<AppTextField> {
             enabled: widget.enabled,
             maxLines: widget.maxLines,
             textAlign: widget.textAlign,
+            inputFormatters: widget.inputFormatters,
             style: AppText.body(
               color: isDark ? AppColors.inkDark : AppColors.ink,
             ),

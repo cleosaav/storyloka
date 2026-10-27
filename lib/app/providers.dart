@@ -8,8 +8,10 @@ import '../core/services/sync_service.dart';
 import '../core/widgets/demo_widgets.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/book_search_repository.dart';
+import '../data/repositories/bookstore_repository.dart';
 import '../data/repositories/chat_repository.dart';
 import '../data/repositories/currency_repository.dart';
+import '../data/repositories/fake/fake_bookstore_repository.dart';
 import '../data/repositories/fake/fake_repositories.dart';
 import '../data/repositories/feedback_repository.dart';
 import '../data/repositories/ledger_repository.dart';
@@ -20,6 +22,7 @@ import '../data/repositories/remote/exchange_rate_repository.dart';
 import '../data/repositories/remote/gemini_chat_repository.dart';
 import '../data/repositories/remote/deepseek_chat_repository.dart';
 import '../data/repositories/remote/fallback_chat_repository.dart';
+import '../data/repositories/remote/overpass_bookstore_repository.dart';
 import '../data/repositories/remote/composite_book_search_repository.dart';
 import '../data/repositories/score_repository.dart';
 import '../features/auth/auth_controller.dart';
@@ -128,7 +131,8 @@ List<SingleChildWidget> buildAppProviders({
     final fakeLibrary = FakeLibraryRepository(demoControls: demoControls);
     final fakeReading = FakeReadingRepository(demoControls: demoControls);
     final fakeLedger = FakeLedgerRepository(demoControls: demoControls);
-    final fakeFeedback = FakeFeedbackRepository(demoControls: demoControls);
+    final ledgerService = LedgerService(fakeLedger);
+    final fakeFeedback = const TeamFeedbackRepository();
     final fakeScore = FakeScoreRepository(demoControls: demoControls);
     final fakeChat = FakeChatRepository(demoControls: demoControls);
     final fakeCurrency = FakeCurrencyRepository(demoControls: demoControls);
@@ -137,6 +141,7 @@ List<SingleChildWidget> buildAppProviders({
       authRepository: fakeAuth,
       sessionStore: sessionStore,
       demoControls: demoControls,
+      ledgerService: ledgerService,
     );
 
     return [
@@ -151,11 +156,12 @@ List<SingleChildWidget> buildAppProviders({
       Provider<LibraryRepository>.value(value: fakeLibrary),
       Provider<ReadingRepository>.value(value: fakeReading),
       Provider<LedgerRepository>.value(value: fakeLedger),
-      Provider<LedgerService>.value(value: LedgerService(fakeLedger)),
+      Provider<LedgerService>.value(value: ledgerService),
       Provider<FeedbackRepository>.value(value: fakeFeedback),
       Provider<ScoreRepository>.value(value: fakeScore),
       Provider<ChatRepository>.value(value: fakeChat),
       Provider<CurrencyRepository>.value(value: fakeCurrency),
+      Provider<BookstoreRepository>.value(value: FakeBookstoreRepository()),
       ChangeNotifierProvider<SyncService>.value(value: SyncService.instance),
     ];
   } else {
@@ -173,10 +179,8 @@ List<SingleChildWidget> buildAppProviders({
       dbHelper: helper,
       sessionStore: sessionStore,
     );
-    final localFeedback = LocalFeedbackRepository(
-      dbHelper: helper,
-      sessionStore: sessionStore,
-    );
+    final ledgerService = LedgerService(localLedger);
+    final teamFeedback = const TeamFeedbackRepository();
     final localScore = LocalScoreRepository(
       dbHelper: helper,
       sessionStore: sessionStore,
@@ -198,23 +202,40 @@ List<SingleChildWidget> buildAppProviders({
     final searchRepo = bookSearchRepo ?? CompositeBookSearchRepository();
     // Fase B5 & R4: Kurs nyata + AI Chat DeepSeek (primary) → Gemini (fallback)
     final currencyRepo = OpenExchangeRateRepository();
-    Future<String> userIdProvider() async =>
-        (await sessionStore.getUser())?.id ?? 'default_user';
-    final chatRepo = FallbackChatRepository(
-      primary: DeepSeekChatRepository(
+    Future<String> userIdProvider() async {
+      final user = await sessionStore.getUser();
+      if (user != null && user.id.isNotEmpty && isValidUuid(user.id)) {
+        return user.id;
+      }
+      throw StateError('NO_AUTHENTICATED_USER: Sesi pengguna tidak ditemukan.');
+    }
+    final geminiFallbacks = Env.geminiModelFallbacks;
+    final chainProviders = <ChatRepository>[
+      DeepSeekChatRepository(
         dbHelper: helper,
         userIdProvider: userIdProvider,
       ),
-      fallback: GeminiChatRepository(
+      GeminiChatRepository(
         dbHelper: helper,
         userIdProvider: userIdProvider,
+        model: Env.geminiModel,
       ),
+      for (final fbModel in geminiFallbacks)
+        GeminiChatRepository(
+          dbHelper: helper,
+          userIdProvider: userIdProvider,
+          model: fbModel,
+        ),
+    ];
+    final chatRepo = FallbackChatRepository.chain(
+      providers: chainProviders,
     );
 
     final authController = AuthController(
       authRepository: realAuth,
       sessionStore: sessionStore,
       demoControls: demoControls,
+      ledgerService: ledgerService,
     );
 
     // Log debug (kDebugMode saja) — PRD §3 & Fase R1 (tanpa mencetak nilai kunci!)
@@ -228,7 +249,7 @@ List<SingleChildWidget> buildAppProviders({
       debugPrint('[StoryLoka Startup] LibraryRepository: ${localLibrary.runtimeType}');
       debugPrint('[StoryLoka Startup] ReadingRepository: ${localReading.runtimeType}');
       debugPrint('[StoryLoka Startup] LedgerRepository: ${localLedger.runtimeType}');
-      debugPrint('[StoryLoka Startup] FeedbackRepository: ${localFeedback.runtimeType}');
+      debugPrint('[StoryLoka Startup] FeedbackRepository: ${teamFeedback.runtimeType}');
       debugPrint('[StoryLoka Startup] ScoreRepository: ${localScore.runtimeType}');
       debugPrint('[StoryLoka Startup] ChatRepository: FallbackChatRepository(primary: DeepSeek, fallback: Gemini)');
       debugPrint('[StoryLoka Startup] CurrencyRepository: ${currencyRepo.runtimeType}');
@@ -247,11 +268,12 @@ List<SingleChildWidget> buildAppProviders({
       Provider<LibraryRepository>.value(value: localLibrary),
       Provider<ReadingRepository>.value(value: localReading),
       Provider<LedgerRepository>.value(value: localLedger),
-      Provider<LedgerService>.value(value: LedgerService(localLedger)),
-      Provider<FeedbackRepository>.value(value: localFeedback),
+      Provider<LedgerService>.value(value: ledgerService),
+      Provider<FeedbackRepository>.value(value: teamFeedback),
       Provider<ScoreRepository>.value(value: localScore),
       Provider<ChatRepository>.value(value: chatRepo),
       Provider<CurrencyRepository>.value(value: currencyRepo),
+      Provider<BookstoreRepository>.value(value: OverpassBookstoreRepository()),
       ChangeNotifierProvider<SyncService>.value(value: SyncService.instance),
     ];
   }

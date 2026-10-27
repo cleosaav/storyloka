@@ -5,7 +5,6 @@ import 'package:storyloka/app/providers.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/widgets/book_widgets.dart';
 import 'package:storyloka/core/widgets/demo_widgets.dart';
-import 'package:storyloka/data/models/feedback_entry.dart';
 import 'package:storyloka/data/models/user_book.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
 import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
@@ -134,7 +133,7 @@ void main() {
       expect(find.bySemanticsLabel('Ubah foto profil'), findsOneWidget);
     });
 
-    testWidgets('5. FeedbackPage kartu memiliki Semantics label Avatar nama', (tester) async {
+    testWidgets('5. FeedbackPage kartu memiliki Semantics label Avatar nama anggota tim', (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -142,25 +141,23 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
 
-      final feedbackRepo = FakeFeedbackRepository();
-      await feedbackRepo.save(
-        FeedbackEntry(
-          id: 'fb-1',
-          userId: 'test_user',
-          name: 'Budi Santoso',
-          impression: 'Mata kuliah sangat seru dan aplikatif',
-          suggestion: 'Pertahankan materi yang bagus ini',
-          createdAt: DateTime.now(),
-        ),
-      );
-
       await tester.pumpWidget(_buildWrapper(
         child: const FeedbackPage(),
-        feedbackRepo: feedbackRepo,
       ));
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('Avatar Budi Santoso'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Avatar Najmah Cleosa'),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Avatar Melanie Bunga Chintya Pawesty'),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Avatar Naftali Margareta'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('6. LockScreenPage lingkaran sidik jari memiliki Semantics label pemindai', (tester) async {

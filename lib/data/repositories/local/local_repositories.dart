@@ -5,13 +5,13 @@ import '../../../core/services/secure_session_store.dart';
 import '../../../core/services/sync_service.dart';
 import '../../database_helper.dart';
 import '../../models/chat_message.dart';
-import '../../models/feedback_entry.dart';
 import '../../models/game_score.dart';
 import '../../models/ledger_block.dart';
 import '../../models/reading_session.dart';
 import '../../models/user_book.dart';
 import '../chat_repository.dart';
 import '../feedback_repository.dart';
+import '../../static/team_feedback.dart';
 import '../ledger_repository.dart';
 import '../library_repository.dart';
 import '../reading_repository.dart';
@@ -19,15 +19,37 @@ import '../score_repository.dart';
 
 const _uuid = Uuid();
 
-/// Helper untuk mengambil ID user saat ini dari session store atau default.
-Future<String> _resolveUserId(SecureSessionStore? sessionStore) async {
+final _uuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
+/// Memeriksa apakah sebuah string merupakan format UUID valid (RFC 4122) — PRD §8.1 & Fase S7.
+bool isValidUuid(String? id) {
+  if (id == null || id.trim().isEmpty) return false;
+  return _uuidPattern.hasMatch(id.trim());
+}
+
+/// Helper untuk mengambil ID user saat ini dari session store atau userIdProvider.
+/// Memeriksa validitas UUID dan menolak fallback palsu ('default_user', 'demo', dll).
+/// Melempar StateError jika sesi tidak tersedia atau ID tidak valid — PRD §7.1 & Fase S7.
+Future<String> _resolveUserId({
+  SecureSessionStore? sessionStore,
+  Future<String> Function()? userIdProvider,
+}) async {
+  if (userIdProvider != null) {
+    final raw = await userIdProvider();
+    if (isValidUuid(raw)) {
+      return raw;
+    }
+    throw StateError('NO_AUTHENTICATED_USER: ID pengguna "$raw" tidak valid atau fallback palsu.');
+  }
   if (sessionStore != null) {
     final user = await sessionStore.getUser();
-    if (user != null && user.id.isNotEmpty) {
+    if (user != null && user.id.isNotEmpty && isValidUuid(user.id)) {
       return user.id;
     }
   }
-  return 'default_user';
+  throw StateError('NO_AUTHENTICATED_USER: Sesi pengguna tidak ditemukan atau belum login.');
 }
 
 // ═══════════════════════════════════════════════════
@@ -45,12 +67,8 @@ class LocalLibraryRepository implements LibraryRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
+  Future<String> _getUserId() async =>
+      _resolveUserId(sessionStore: sessionStore, userIdProvider: userIdProvider);
 
   @override
   Future<List<UserBook>> getBooks({ListType? listType}) async {
@@ -290,12 +308,8 @@ class LocalReadingRepository implements ReadingRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
+  Future<String> _getUserId() async =>
+      _resolveUserId(sessionStore: sessionStore, userIdProvider: userIdProvider);
 
   @override
   Future<void> saveSession(ReadingSession session) async {
@@ -379,12 +393,8 @@ class LocalLedgerRepository implements LedgerRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
+  Future<String> _getUserId() async =>
+      _resolveUserId(sessionStore: sessionStore, userIdProvider: userIdProvider);
 
   @override
   Future<List<LedgerBlock>> getBlocks() async {
@@ -451,7 +461,7 @@ class LocalLedgerRepository implements LedgerRepository {
 // ═══════════════════════════════════════════════════
 
 class LocalFeedbackRepository implements FeedbackRepository {
-  final DatabaseHelper dbHelper;
+  final DatabaseHelper? dbHelper;
   final SecureSessionStore? sessionStore;
   final Future<String> Function()? userIdProvider;
 
@@ -461,50 +471,9 @@ class LocalFeedbackRepository implements FeedbackRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
-
   @override
-  Future<List<FeedbackEntry>> getAll() async {
-    final db = await dbHelper.database;
-    final userId = await _getUserId();
-
-    final maps = await db.query(
-      'feedbacks',
-      where: 'user_id = ?',
-      whereArgs: [userId],
-      orderBy: 'created_at DESC',
-    );
-    return maps.map((m) => FeedbackEntry.fromMap(m)).toList();
-  }
-
-  @override
-  Future<void> save(FeedbackEntry entry) async {
-    final db = await dbHelper.database;
-    final userId = await _getUserId();
-
-    final entryToSave = entry.userId.isEmpty || entry.userId == 'demo_user'
-        ? FeedbackEntry(
-            id: entry.id.isEmpty ? _uuid.v4() : entry.id,
-            userId: userId,
-            name: entry.name,
-            impression: entry.impression,
-            suggestion: entry.suggestion,
-            createdAt: entry.createdAt,
-            syncStatus: 'pending',
-          )
-        : entry;
-
-    await db.insert(
-      'feedbacks',
-      entryToSave.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    SyncService.instance.trigger();
+  Future<List<TeamFeedback>> getAll() async {
+    return teamFeedbacks;
   }
 }
 
@@ -523,12 +492,8 @@ class LocalScoreRepository implements ScoreRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
+  Future<String> _getUserId() async =>
+      _resolveUserId(sessionStore: sessionStore, userIdProvider: userIdProvider);
 
   @override
   Future<List<GameScore>> getScores(String game) async {
@@ -598,15 +563,15 @@ class LocalChatRepository implements ChatRepository {
     this.userIdProvider,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
-  Future<String> _getUserId() async {
-    if (userIdProvider != null) {
-      return await userIdProvider!();
-    }
-    return await _resolveUserId(sessionStore);
-  }
+  Future<String> _getUserId() async =>
+      _resolveUserId(sessionStore: sessionStore, userIdProvider: userIdProvider);
 
   @override
-  Future<String> sendMessage(String message, List<ChatMessage> history) async {
+  Future<String> sendMessage(
+    String message,
+    List<ChatMessage> history, {
+    void Function(String status)? onStatusUpdate,
+  }) async {
     final userId = await _getUserId();
     final now = DateTime.now().toUtc();
 

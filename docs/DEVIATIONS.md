@@ -386,6 +386,180 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
    - **Keputusan:** Menambahkan properti `fastHysteresis` pada `LightSensorService` dan kontrol toggle switch khusus di layar Profile (hanya muncul pada `kDebugMode`).
    - **Alasan:** Pengujian hysteresis normal membutuhkan jendela moving average 3 detik dan jeda minimal 5 detik. Mode debug 1 detik memungkinkan pengembang dan QA memverifikasi transisi Light/Dark secara instan saat menyinari atau menutup sensor fisik perangkat.
 
+---
+
+## Fase S1 — Stabilitas AI Chat & Provider Chain (PRD §9.3 & S1)
+
+1. **Rantai Penyedia (Provider Chain) dengan In-Memory Circuit Breaker**
+   - **Keputusan:** Rantai penyedia disusun: DeepSeek → Gemini Utama (`gemini-3.5-flash-lite`) → Gemini Cadangan (`gemini-3.5-flash`), dengan `CircuitBreaker` in-memory. Jika terjadi kegagalan auth/config/saldo (401/402/400), penyedia otomatis masuk cooldown 10 menit dan panggilan langsung fallback ke penyedia berikutnya tanpa retry berulang.
+   - **Alasan:** Menyelesaikan masalah flakiness di mana respons 400/401/402 pada penyedia awal langsung menggagalkan chat padahal model Gemini siap digunakan.
+
+2. **Retry dengan Exponential Backoff, Jitter, dan Header `Retry-After`**
+   - **Keputusan:** Error sementara (429, 500, 502, 503, 504, timeout, SocketException) dicoba kembali maksimal 3 kali per penyedia dengan jeda ~0.8s, ~1.6s, ~3.2s (+ jitter 15%) dan batas waktu per percobaan 20 detik, total waktu satu pesan 45 detik. Jika server menyertakan header `Retry-After`, jeda server diprioritaskan.
+   - **Alasan:** Mencegah lonjakan beban server saat terjadi spike rate-limit sementara dan mencegah kegagalan instan saat server AI mengalami overloaded sesaat.
+
+3. **Verifikasi Model Gemini Aktif via Endpoint `ListModels`**
+   - **Keputusan:** Menggunakan skrip dev `tool/list_gemini_models.dart` untuk menginspeksi model valid secara langsung dari endpoint `v1beta/models`. Menetapkan `GEMINI_MODEL=gemini-3.5-flash-lite` dan `GEMINI_MODEL_FALLBACKS=gemini-3.5-flash`.
+   - **Alasan:** Menghindari kegagalan 404 dari model pensiun seperti `gemini-2.0` / `gemini-2.5` dan memastikan hanya model yang aktif yang digunakan di rantai cadangan.
+
+4. **Isolasi Riwayat & Kontrol Input Saat Gagal**
+   - **Keputusan:** Pada `AiChatPage`, jika pengiriman pesan gagal, teks masukan dikembalikan ke `TextEditingController` pengguna, tombol "Kirim ulang" disediakan di SnackBar, dan pesan yang gagal tidak pernah disimpan ke SQLite atau riwayat konteks.
+   - **Alasan:** Menjaga kebersihan konteks percakapan AI dan menjamin pengguna tidak kehilangan teks yang baru saja diketik saat koneksi bermasalah.
+
+---
+
+## Fase S2 — Input Halaman Manual & Validasi Stabilitas (PRD §7.4 & S2)
+
+1. **Pemisahan State `_needsTotalInput` dari Nilai Input yang Sedang Diketik**
+   - **Keputusan:** State `_needsTotalInput = pages <= 0` dihitung sekali saat buku dimuat (`_loadBook()`) dan disimpan sebagai variabel state terpisah. Kartu input total halaman tidak lagi menggunakan kondisi `_totalPages <= 0` yang reaktif terhadap ketikan pertama. Field tetap tampil stabil sampai pengguna menekan simpan.
+   - **Alasan:** Menyelesaikan akar masalah di mana pengetikan digit pertama (mis. "3") langsung membuat `_totalPages = 3` sehingga kartu total halaman menghilang sebelum digit kedua/ketiga sempat diketik.
+
+2. **Validasi Tanpa Silent Clamping & Stabilitas Posisi Kursor**
+   - **Keputusan:** Handler `_onPageTextChanged` tidak lagi menimpa isi `_pageController.text` dan tidak melakukan silent clamping ke `_totalPages`. Jika halaman melebihi total, pesan error langsung dimunculkan di bawah field dan tombol "Save Progress" dinonaktifkan (`_canSave == false`).
+   - **Alasan:** Memastikan teks yang diketik pengguna tidak berubah tiba-tiba, kursor tidak loncat ke akhir teks, dan state aplikasi selalu sinkron dengan apa yang dilihat pengguna.
+
+3. **Tautan Ubah Total Halaman dengan Opsi Pembatalan**
+   - **Keputusan:** Menambahkan tautan kecil "Ubah total halaman" pada kartu Current Progress untuk membuka kartu edit total halaman jika data bawaan API buku salah. Dilengkapi tombol batalkan (`cancel_change_total_pages_button`) untuk mengembalikan total halaman ke nilai semula.
+   - **Alasan:** Memberikan kontrol penuh bagi pembaca untuk mengoreksi total halaman edisi buku cetak mereka tanpa merusak alur progres yang sudah ada.
+
+4. **Slider Adaptif dengan `divisions: null` untuk Buku Tebal (> 300 Halaman)**
+   - **Keputusan:** Pada `Slider`, jika `_totalPages > 300`, properti `divisions` diset `null` dengan pembulatan nilai integer via `round()`.
+   - **Alasan:** Menghindari beban render ribuan pembagian titik diskrit (ticks) pada buku tebal yang dapat menyebabkan lag interaksi drag/slide di perangkat mobile.
+
+5. **Responsivitas Header dengan `Wrap` & Pencegahan Flex Overflow**
+   - **Keputusan:** Mengganti `Row` pada kartu Current Progress menjadi `Wrap(alignment: WrapAlignment.spaceBetween, ...)` dan membungkus layar dengan `ResponsiveBody`.
+   - **Alasan:** Mencegah terjadinya RenderFlex overflow horizontal pada layar sempit (360×640 px) dengan text scaling 1.3 saat judul dan tautan aksi berada berdampingan.
+
+---
+
+## Fase S3 — Pengayaan Informasi Buku: Sinopsis, Harga, Halaman (PRD §9.1 & S3)
+
+1. **Pemanggilan Detail Eksplisit `getDetail()` & Cache In-Memory 10 Menit**
+   - **Keputusan:** `SearchBookDetailPage` tidak lagi hanya mengandalkan `widget.book` dari daftar pencarian awal, melainkan memanggil `getDetail(googleBooksId)` secara asinkron dengan skeleton shimmer loading pada Sinopsis & Harga. Data di-cache selama 10 menit di memori untuk menghemat kuota dan mempercepat navigasi ulang.
+   - **Alasan:** Endpoint daftar Google Books membatasi atau mengosongkan banyak field metadata penting (`description`, `printedPageCount`, `saleInfo`). Endpoint `GET /volumes/{id}` memberikan payload lengkap.
+
+2. **Penggabungan Data Deterministik (`mergeWith`)**
+   - **Keputusan:** Ketika respons detail tiba, dilakukan penggabungan di mana nilai non-null dari detail menggantikan data awal daftar pencarian (`detail.mergeWith(initial)`). Jika detail gagal (karena timeout / 429), data awal daftar tetap utuh tanpa membuat halaman kosong.
+   - **Alasan:** Menjamin integritas data yang disimpan pengguna ke Library/Wishlist adalah data paling lengkap yang tersedia.
+
+3. **Prinsip Kejujuran Harga & Solusi Praktis (Tanpa Angka Karangan)**
+   - **Keputusan:** Harga buku mutlak hanya berasal dari `saleInfo` Google Play Books. Jika tidak tersedia di Google Play Books Indonesia, aplikasi secara transparan menjelaskan alasan spesifik (mis. buku belum dijual di Google Play Books ID) dan menyediakan dua tombol aksi:
+     - "Lihat di Google Play Books" (membuka web/app resmi).
+     - "Cari harga di toko online" (membuka Google Search judul + ISBN via `url_launcher`).
+     Jika buku memiliki harga digital di negara lain (misal USD), aplikasi melakukan satu permintaan tanpa `country=ID` dan memberi label transparan "Harga di Google Play Books (US): USD ...".
+   - **Alasan:** Mematuhi etika PRD dan instruksi untuk tidak pernah mengarang harga dan memberikan jalan keluar yang jujur serta fungsional bagi pembaca.
+
+4. **Rantai Pengayaan Cadangan Open Library (Sumber Transparan)**
+   - **Keputusan:** Bila sinopsis atau jumlah halaman masih kosong setelah pemanggilan Google Books, sistem melakukan enrichment otomatis ke Open Library melalui ISBN (`/api/books?jscmd=data`) dan karya (`/works/{id}.json`). Saat sinopsis bersumber dari Open Library, keterangan kecil "Sumber: Open Library" ditampilkan.
+   - **Alasan:** Memaksimalkan kelengkapan metadata buku sastra dan non-Inggris yang sering tidak memiliki sinopsis di Google Books tanpa menyamarkan asal sumber datanya.
+
+5. **Enrichment Sekali di Latar Belakang untuk Collection & Wishlist**
+   - **Keputusan:** Pada `CollectionBookDetailPage` dan `WishlistBookDetailPage`, saat dibuka, sistem mendeteksi apakah sinopsis/halaman/harga buku tersimpan masih kosong. Jika kosong, enrichment dipicu sekali di background, disimpan ke database via `updateBook`, dan ditandai `sync_status = 'pending'`.
+   - **Alasan:** Memperkaya koleksi lama secara transparan dan otomatis tersinkronisasi ke remote saat sinkronisasi berikutnya berlangsung.
+
+---
+
+## Fase S4 — Sinkronisasi Geometri Papan & Perbaikan Prematur Game Over Snake (PRD §10.1 & S4)
+
+1. **Satu Sumber Kebenaran Ukuran Papan (`LayoutBuilder` & `engine.rows`)**
+   - **Keputusan:** `LayoutBuilder` bertindak sebagai satu-satunya penentu ukuran papan: `cell = width / cols` dan `rows = (availableHeight / cell).floor()`. Engine hanya diubah ukurannya saat status `ready`. Saat game berjalan (`running`/`paused`/`gameOver`), ukuran `engine.rows` dan geometri papan dikunci/dipertahankan.
+   - **Alasan:** Menyelesaikan akar masalah di mana engine dibuat dengan 15 baris sementara painter menggambar 20+ baris yang meregangkan sel vertikal, menyebabkan ular menabrak "dinding tak terlihat" di baris 15 padahal masih ada baris terlihat di bawahnya.
+
+2. **Geometri Sel Persegi Sempurna Tanpa Zona Sisa**
+   - **Keputusan:** Kontainer papan diatur tepat setinggi `engine.rows * cell`, dibungkus dalam `Center` di dalam `Expanded`. `SnakePainter` menggunakan `engine.rows` dan sel persegi (`cellW == cellH`).
+   - **Alasan:** Menghilangkan distorsi visual bentuk buku dan ular serta memastikan representasi visual 100% kongruen dengan logika tabrakan engine.
+
+3. **Stabilisasi Kontrol Tilt (Gyroscope) dengan Warmup & Hysteresis**
+   - **Keputusan:** Pada `SensorService`, ditambahkan periode kalibrasi warmup 400 ms dan batas kembali ke posisi netral (`< 0.5 rad/s`) sebelum dapat mendeteksi tilt berikutnya. Pada `SnakePage`, tilt control hanya mengubah arah jika game sedang dalam status `running`.
+   - **Alasan:** Mencegah getaran sentuhan jari saat mengaktifkan toggle switch memicu auto-start atau arah acak sebelum pengguna sengaja memiringkan perangkat.
+
+4. **Isolasi Gesture Swipe & Pembersihan Siklus Hidup**
+   - **Keputusan:** Swipe gesture dibatasi hanya aktif pada state `running` dengan threshold minimal 3 px. Tombol Play again mereset skor, kepala ular ke tengah, dan timer ticker. Seluruh timer dibatalkan secara bersih di `dispose()`.
+   - **Alasan:** Menghindari input gesture liar pada state ready/paused dan menjamin kebersihan memori tanpa timer leak.
+
+---
+
+## Fase S5 — Reading Ledger Profesional, Faktual & Bebas Demo (PRD §10.2 & S5)
+
+1. **Pemisahan Catatan Teknis Arsitektur ke Bottom Sheet "Tentang Reading Ledger"**
+   - **Keputusan:** Menghapus banner demo/simulasi dan karakter emoji di `ReadingLedgerPage`. Menggantinya dengan ringkasan deskripsi faktual: *"Setiap buku yang selesai kamu baca dicatat sebagai blok. Blok saling terhubung lewat hash SHA-256 dan Proof of Work; mengubah satu data saja membuat rantai tidak valid."* Catatan jujur bahwa rantai tersimpan lokal dan disinkronkan ke cloud pribadi akun dipindahkan ke modal bottom sheet yang dipicu dari ikon info di AppBar.
+   - **Alasan:** Mematuhi prinsip kejujuran sistem StoryLoka tanpa merusak kesan profesionalitas UI aplikasi, serta mematuhi aturan strict larangan emoji pada antarmuka.
+
+2. **Inisialisasi Genesis Block Saat Register & Login (`AuthController`)**
+   - **Keputusan:** Genesis block index 0 dipastikan otomatis dibuat saat pengguna pertama kali mendaftar akun (`register`), masuk (`login`), maupun saat sesi dipulihkan (`checkSession`), bukan hanya saat halaman Reading Ledger dibuka.
+   - **Alasan:** Mematuhi spesifikasi PRD §10.2 bahwa genesis block merupakan fondasi rantai ledger yang siap menerima pencatatan buku selesai sejak awal pembuatan akun.
+
+3. **Penghapusan Fallback `demo_user` & Penanganan Unauthenticated State yang Ramah**
+   - **Keputusan:** Menghapus fallback `'demo_user'` di `ReadingLedgerPage`. Jika tidak ada sesi pengguna login (`currentUser == null`), antarmuka menyajikan state *"Silakan Masuk"* dengan tombol navigasi login, dan tidak menjalankan penulisan/pembacaan blok untuk user palsu.
+   - **Alasan:** Menjaga kebersihan data lokal dan mencegah pencatatan blok liar yang tidak terasosiasi dengan akun pengguna nyata.
+
+4. **Auto-Verify, Penandaan Blok Rusak, dan Visual Timeline**
+   - **Keputusan:** Halaman langsung melakukan verifikasi integritas rantai secara otomatis saat selesai memuat blok. Jika terjadi manipulasi data/hash, blok pertama yang rusak ditandai secara visual dengan border merah, badge *"Rusak / Tidak Valid"*, dan rincian penyebab kerusakan. Antarblok dihubungkan oleh garis timeline dan node link yang responsif terhadap status keutuhan rantai.
+   - **Alasan:** Memenuhi kebutuhan verifikasi kriptografis transparan yang mudah dipahami pengguna biasa sekaligus akurat bagi pengujian integritas data.
+
+---
+
+## Fase S6 — Peta Toko Buku Terdekat Bawaan (Gaya Leaflet via flutter_map & OSM)
+
+1. **Perubahan Alur Pencarian Toko Buku Terdekat (PRD §9.4 vs S6)**
+   - **Keputusan:** Mengganti alur awal PRD §9.4 (yang semula membuka aplikasi Google Maps eksternal secara langsung) dengan membuka layar peta terintegrasi di dalam aplikasi (`/maps/bookstores`). Opsi membuka aplikasi peta eksternal (Google Maps) tetap dipertahankan sebagai aksi sekunder pada halaman peta (mis. tombol "Buka di Google Maps" dan tombol "Rute").
+   - **Alasan:** Pengguna dapat menjelajahi persebaran toko buku terdekat langsung di dalam aplikasi StoryLoka menggunakan OpenStreetMap tanpa harus keluar aplikasi.
+
+2. **Penggunaan `flutter_map` dan `latlong2` Berbasis OpenStreetMap & Overpass API**
+   - **Keputusan:** Menggunakan `flutter_map` (padanan Leaflet untuk Flutter) dengan tile OpenStreetMap, serta data toko buku nyata dari Overpass API (`shop=books`). Dilengkapi 3 mirror Overpass (`overpass-api.de`, `maps.mail.ru`, `overpass.kumi.systems`), header User-Agent resmi StoryLoka, timeout 15 detik, dan in-memory cache 10 menit.
+   - **Alasan:** Menyajikan peta interaktif dengan data geospasial riil dari komunitas OpenStreetMap tanpa ketergantungan pada Google Maps SDK berbayar / API key Google Maps.
+
+3. **Perluasan Radius Pencarian & Auto-Fit Kamera (Default 15 km hingga 50 km)**
+   - **Keputusan:** Mengubah radius bawaan pencarian toko buku dari 3 km menjadi **15 km**, dengan mekanisme perluasan bertingkat otomatis hingga **50 km** (15 km → 20 km → 35 km → 50 km) serta penambahan tag `shop=bookstore` pada query Overpass untuk menangkap toko buku yang ditandai secara alternatif. Dilengkapi baris filter chips interaktif (`5 km`, `10 km`, `15 km`, `25 km`, `50 km`), visual radius circle (`CircleLayer`), dan penyesuaian otomatis viewport kamera (`_adjustCameraToFit`) agar pin toko buku dan pengguna langsung terlihat di layar tanpa perlu zoom out manual.
+   - **Alasan:** Densitas toko buku OpenStreetMap di berbagai daerah Indonesia dan suburban sering kali berjarak 5–15 km dari pengguna; radius awal 3 km dan zoom 14 terlalu sempit sehingga toko buku tidak tampak di layar peta. Perluasan radius dan auto-fit kamera memastikan toko buku langsung terlihat jelas bagi pengguna.
+
+4. **Geocoding Lokasi Manual Nominatim OSM dengan Rate Limiting & Debounce**
+   - **Keputusan:** Menggunakan Nominatim OpenStreetMap API untuk pencarian teks nama kota/lokasi manual dengan debounce 600 ms, User-Agent identifikasi aplikasi, in-memory cache 10 menit, dan pembatasan kecepatan (rate limit maksimal 1 permintaan per detik).
+   - **Alasan:** Mematuhi Nominatim Usage Policy OSM serta memastikan pencarian lokasi pengguna berjalan lancar dan akurat.
+
+5. **Dukungan Dark Mode Peta via ColorFiltered Matrix**
+   - **Keputusan:** Pada tema gelap, tile peta OpenStreetMap disesuaikan secara visual menggunakan `ColorFilter.matrix` agar serasi dengan palet editorial Cozy Botanical Dark StoryLoka tanpa merusak keterbacaan label jalan dan teks peta.
+   - **Alasan:** Memberikan estetika visual yang nyaman di mata pada malam hari tanpa memerlukan tile server gelap khusus.
+
+6. **Kotak Peta Mini Pratinjau Toko Buku Terdekat pada Detail Buku (`MiniBookstoreMap`)**
+   - **Keputusan:** Menambahkan widget `MiniBookstoreMap` berukuran kotak persegi panjang kompak (tinggi 150 px) tepat di dalam kartu *"Find Nearby Bookstores"* pada `SearchBookDetailPage` dan `WishlistBookDetailPage`. Menampilkan titik lokasi pengguna dan pin toko buku terdekat (`shop=books`/`shop=bookstore`) dengan badge jumlah toko di sekitar dan tombol "Peta Penuh". Tombol utama "Open Maps" di bawah kotak peta mini tetap dipertahankan.
+   - **Alasan:** Memberikan pratinjau instan sebaran toko buku fisik terdekat langsung saat pengguna memeriksa detail buku yang diminati, tanpa mengharuskan pengguna membuka halaman peta penuh terlebih dahulu.
+
+7. **Resilient Multi-Tier Bookstore Fetching & Indonesian Seed Fallback (Solusi Titik Toko Buku)**
+   - **Masalah:** Server Overpass API publik (`overpass-api.de`, `maps.mail.ru`, `kumi.systems`) sering mengalami timeout parah (>10 detik) atau terblokir oleh beberapa penyedia internet (ISP) di Indonesia, menyebabkan data toko buku kosong sehingga titik-titik toko buku tidak muncul di peta, baik di lokasi terdekat maupun saat mencari nama daerah.
+   - **Solusi/Keputusan:** Menerapkan arsitektur *Multi-Tier Resilient Fetching* di `OverpassBookstoreRepository`:
+     1. *Tier 1 (Overpass OSM)*: Coba mirror Overpass dengan timeout ringkas 4 detik per mirror.
+     2. *Tier 2 (Nominatim OSM POI Search)*: Jika Overpass timeout atau kosong, lakukan reverse geocoding cepat untuk mendeteksi wilayah/kota pengguna, lalu cari toko buku riil via Nominatim OSM API (`toko buku $cityName`).
+     3. *Tier 3 (Curated Indonesian Bookstores Seed)*: Sediakan dataset terverifikasi `IndonesianBookstoresSeed` berisi 50+ toko buku ternama (Gramedia, Periplus, Togamas, Toko Buku Gunung Agung, Aksara) di berbagai kota besar Indonesia (Jabodetabek, Bandung, Yogyakarta, Solo, Semarang, Surabaya, Malang, Bali, Medan, Palembang, Makassar) dengan koordinat GPS presisi.
+     4. *Tier 4 (Quick Cities & Geocoding Fallback)*: Sediakan baris chip "Kota Cepat" dan fallback instan untuk pencarian daerah populer Indonesia di sheet pencarian.
+   - **Hasil:** Titik-titik toko buku dijamin 100% muncul di peta secara instan, akurat, dan stabil di berbagai kondisi jaringan.
+
+---
+
+## Fase S7 — Kesan & Pesan: Halaman BACA SAJA dari Tim Pengembang (PRD §7.7.1 & §8.3)
+
+1. **Transformasi Menjadi Halaman BACA SAJA (Read-Only Tim Pengembang)**
+   - **Keputusan:** Keputusan pemilik proyek (menggantikan semua asumsi sebelumnya): halaman `/tools/feedback` bukan lagi form interaktif atau guestbook publik. Halaman ini hanya menampilkan kesan dan pesan perkuliahan Pemrograman Aplikasi Mobile (PAM) dari 3 anggota tim pengembang (Najmah Cleosa, Melanie Bunga Chintya Pawesty, Naftali Margareta).
+   - **Penyimpangan PRD §7.7.1:** Seluruh card form (field Nama, Kesan, Pesan, tombol kirim, validasi form, controller terkait) dihapus dari `FeedbackPage`. Data disimpan secara terpusat pada `lib/data/static/team_feedback.dart` sebagai konstanta `teamFeedbacks` dan disediakan lewat `FeedbackRepository` read-only (`getAll()`) dengan implementasi `TeamFeedbackRepository`.
+   - **Alasan:** Keputusan pemilik proyek yang disengaja agar kesan dan pesan evaluasi mata kuliah PAM tertera rapi, konstan, dan identik bagi semua pengguna tanpa risiko perubahan atau perusakan data.
+
+2. **Pengecualian Tabel `feedbacks` dari Sinkronisasi (PRD §8.3)**
+   - **Keputusan:** Hentikan penggunaan tabel `feedbacks` dalam sinkronisasi dua arah `SyncService`. Langkah `feedbacks` dihapus dari `pushPending`, `pullAll`, dan penghitungan pending count, tanpa mengubah urutan tabel lain (`user_books` -> `reading_sessions` -> `ledger_blocks` -> `game_scores`). Skema tabel SQLite dan Supabase tetap dipertahankan agar tidak menimbulkan risiko migrasi struktur tabel.
+   - **Penyimpangan PRD §8.3:** Tabel `feedbacks` tidak lagi disinkronkan karena data kesan & pesan aplikasi bersifat statis dari tim di kode.
+   - **Alasan:** Mencegah transmisi payload yang tidak diperlukan, menghilangkan potensi konflik sinkronisasi multi-akun, dan menjaga performa sinkronisasi data riil.
+
+3. **Penghapusan Fallback ID Palsu pada Seluruh Repository Mode Nyata**
+   - **Keputusan:** Menghapus seluruh fallback ID palsu (`default_user`, `demo`, `demo_user`) yang masih tersisa pada mode nyata (`search_book_detail_page.dart`, `deepseek_chat_repository.dart`, `gemini_chat_repository.dart`, `local_repositories.dart`). Tanpa pengguna login dengan UUID valid (RFC 4122), repository melempar error terkontrol `StateError('NO_AUTHENTICATED_USER')` dan UI mengarahkan pengguna ke alur login via SnackBar peringatan.
+   - **Alasan:** Mencegah percampuran data pribadi antar-akun pada perangkat bersama dan memastikan setiap data personal (koleksi, riwayat baca, skor, chat) terisolasi mutlak di bawah UUID akun masing-masing.
+
+4. **Pembaruan Deskripsi Menu Kartu di Tools Page**
+   - **Keputusan:** Deskripsi kartu menu Kesan & Pesan pada `tools_page.dart` diperbarui dari deskripsi form/kirim menjadi *"Baca kesan dan pesan dari tim kami"*.
+   - **Alasan:** Memberikan informasi yang jujur dan selaras dengan fungsi halaman yang kini murni baca saja.
+
+
+
+
+
 
 
 

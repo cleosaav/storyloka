@@ -209,6 +209,31 @@ class OpenLibraryRepository implements BookSearchRepository {
   }
 
   @override
+  Future<BookSearchResult?> getDetail(String googleBooksId) async {
+    final cleanId = googleBooksId.trim();
+    if (cleanId.isEmpty) return null;
+
+    final cleanIsbn = cleanId.replaceAll(RegExp(r'[\s\-]'), '');
+    final isbnBook = await lookupIsbn(cleanIsbn);
+    if (isbnBook != null) {
+      return isbnBook.copyWith(synopsisSource: 'Open Library');
+    }
+
+    if (cleanId.contains('OL') || cleanId.startsWith('/')) {
+      final synopsis = await fetchWorkSynopsis(cleanId);
+      if (synopsis != null) {
+        return BookSearchResult(
+          googleBooksId: cleanId,
+          title: cleanId,
+          synopsis: synopsis,
+          synopsisSource: 'Open Library',
+        );
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<BookSearchResult?> randomBook() async {
     final random = Random();
     final subject = _discoverSubjects[random.nextInt(_discoverSubjects.length)];
@@ -341,8 +366,17 @@ class OpenLibraryRepository implements BookSearchRepository {
         ? isbn13List.first.toString().replaceAll(RegExp(r'[\s\-]'), '')
         : cleanIsbn;
 
+    // Works & Notes/Description (Sinopsis)
+    final works = data['works'] as List<dynamic>?;
+    final workKey = (works != null && works.isNotEmpty)
+        ? (works.first as Map)['key']?.toString()
+        : null;
+
+    final synopsis = parseDescription(data['notes']) ?? parseDescription(data['description']);
+
     return BookSearchResult(
-      googleBooksId: key.startsWith('/books/') ? 'openlib:${key.replaceFirst('/books/', '')}' : key,
+      googleBooksId: workKey ??
+          (key.startsWith('/books/') ? 'openlib:${key.replaceFirst('/books/', '')}' : key),
       title: title,
       authors: authors,
       genre: genre,
@@ -350,7 +384,8 @@ class OpenLibraryRepository implements BookSearchRepository {
       publisher: publisher,
       pageCount: pageCount,
       coverUrl: coverUrl,
-      synopsis: null,
+      synopsis: synopsis,
+      synopsisSource: synopsis != null ? 'Open Library' : null,
       priceAmount: null, // Harga HANYA dari Google saleInfo — Fase R2
       priceCurrency: null,
     );

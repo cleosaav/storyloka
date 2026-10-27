@@ -22,6 +22,8 @@ class SensorService {
   final StreamController<SnakeDirection> _tiltController =
       StreamController<SnakeDirection>.broadcast();
   DateTime _lastTiltTime = DateTime(2000);
+  DateTime _tiltStartTime = DateTime(2000);
+  bool _tiltInNeutral = true;
 
   /// Threshold magnitudo shake: sqrt(x²+y²+z²) > 25 m/s² — PRD §7.3.
   static const double _shakeThreshold = 25.0;
@@ -29,9 +31,17 @@ class SensorService {
   /// Debounce 1.5 detik antar shake — PRD §7.3.
   static const Duration _shakeCooldown = Duration(milliseconds: 1500);
 
-  /// Threshold kecepatan rotasi gyroscope (rad/s) untuk tilt control — PRD §10.4.
-  static const double _tiltThreshold = 1.2;
-  static const Duration _tiltCooldown = Duration(milliseconds: 300);
+  /// Threshold kecepatan rotasi gyroscope (rad/s) untuk tilt control aktif — PRD §10.4.
+  static const double _tiltActiveThreshold = 1.5;
+
+  /// Threshold kecepatan rotasi gyroscope untuk kembali ke zona netral (hysteresis).
+  static const double _tiltNeutralThreshold = 0.5;
+
+  /// Cooldown antar pembacaan tilt.
+  static const Duration _tiltCooldown = Duration(milliseconds: 350);
+
+  /// Periode kalibrasi/warmup saat baru diaktifkan agar getaran sentuhan jari tidak memicu arah.
+  static const Duration _tiltWarmup = Duration(milliseconds: 400);
 
   /// Stream yang memancarkan event shake.
   Stream<void> get shakeStream => _shakeController.stream;
@@ -69,29 +79,44 @@ class SensorService {
   }
 
   /// Mulai mendengarkan sensor gyroscope untuk tilt control Snake — PRD §10.4.
+  /// Dilengkapi periode kalibrasi/warmup dan hysteresis netral agar tidak memicu arah saat baru aktif.
   void startTiltListening({void Function(SnakeDirection)? onDirection}) {
     if (_gyroSubscription != null) return;
+    _tiltStartTime = DateTime.now();
+    _tiltInNeutral = true;
     try {
       _gyroSubscription = gyroscopeEventStream().listen((event) {
         final now = DateTime.now();
+        // Warmup: abaikan pembacaan pada awal aktivasi (kalibrasi/stabilisasi sentuhan jari)
+        if (now.difference(_tiltStartTime) < _tiltWarmup) return;
+
+        // Cek kondisi netral untuk hysteresis
+        final maxAbsRate = max(event.x.abs(), max(event.y.abs(), event.z.abs()));
+        if (maxAbsRate < _tiltNeutralThreshold) {
+          _tiltInNeutral = true;
+        }
+
+        // Hanya deteksi tilt baru jika sudah pernah kembali ke posisi netral
+        if (!_tiltInNeutral) return;
         if (now.difference(_lastTiltTime) < _tiltCooldown) return;
 
         SnakeDirection? detected;
         // Sumbu X: rotasi maju/mundur (atas / bawah)
-        if (event.x < -_tiltThreshold) {
+        if (event.x < -_tiltActiveThreshold) {
           detected = SnakeDirection.up;
-        } else if (event.x > _tiltThreshold) {
+        } else if (event.x > _tiltActiveThreshold) {
           detected = SnakeDirection.down;
         }
         // Sumbu Y & Z: rotasi miring kiri/kanan
-        else if (event.y < -_tiltThreshold || event.z > _tiltThreshold) {
+        else if (event.y < -_tiltActiveThreshold || event.z > _tiltActiveThreshold) {
           detected = SnakeDirection.left;
-        } else if (event.y > _tiltThreshold || event.z < -_tiltThreshold) {
+        } else if (event.y > _tiltActiveThreshold || event.z < -_tiltActiveThreshold) {
           detected = SnakeDirection.right;
         }
 
         if (detected != null) {
           _lastTiltTime = now;
+          _tiltInNeutral = false; // Memerlukan kembali ke posisi netral sebelum tilt berikutnya
           HapticFeedback.selectionClick();
           _tiltController.add(detected);
           onDirection?.call(detected);

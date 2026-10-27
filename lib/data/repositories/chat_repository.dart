@@ -1,9 +1,14 @@
 import '../models/chat_message.dart';
 
-/// Kontrak AI Chat — PRD §13.0.
+/// Kontrak AI Chat — PRD §13.0 & Fase S1.
 abstract class ChatRepository {
   /// Kirim pesan dan dapatkan balasan.
-  Future<String> sendMessage(String message, List<ChatMessage> history);
+  /// Mendukung callback [onStatusUpdate] untuk memberi umpan balik UI saat retry/fallback.
+  Future<String> sendMessage(
+    String message,
+    List<ChatMessage> history, {
+    void Function(String status)? onStatusUpdate,
+  });
 
   /// Ambil riwayat chat.
   Future<List<ChatMessage>> getHistory();

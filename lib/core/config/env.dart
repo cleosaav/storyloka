@@ -74,8 +74,21 @@ class Env {
 
   static String get geminiApiKey => _safeGet('GEMINI_API_KEY');
   static String get geminiModel => _safeGet('GEMINI_MODEL', 'gemini-3.5-flash-lite');
+  static List<String> get geminiModelFallbacks {
+    final raw = _safeGet('GEMINI_MODEL_FALLBACKS');
+    if (raw.trim().isEmpty) {
+      return const ['gemini-2.5-flash', 'gemini-3.5-flash'];
+    }
+    return raw
+        .split(',')
+        .map((m) => m.trim())
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
   static String get googleBooksApiKey => _safeGet('GOOGLE_BOOKS_API_KEY');
   static String get deepseekApiKey => _safeGet('DEEPSEEK_API_KEY');
+  static String get mapTileUrl =>
+      _safeGet('MAP_TILE_URL', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
 
   /// Daftar nama variabel inti yang masih kosong di file .env (tanpa mencetak nilai).
   static List<String> get missingVariables {

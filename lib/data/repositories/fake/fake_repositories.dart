@@ -6,7 +6,6 @@ import '../../models/app_user.dart';
 import '../../models/user_book.dart';
 import '../../models/reading_session.dart';
 import '../../models/ledger_block.dart';
-import '../../models/feedback_entry.dart';
 import '../../models/game_score.dart';
 import '../../models/chat_message.dart';
 import '../auth_repository.dart';
@@ -17,6 +16,7 @@ import '../reading_repository.dart';
 import '../ledger_repository.dart';
 import '../feedback_repository.dart';
 import '../score_repository.dart';
+import '../../static/team_feedback.dart';
 import '../chat_repository.dart';
 import '../currency_repository.dart';
 import '../../../core/services/secure_session_store.dart';
@@ -363,6 +363,26 @@ class FakeBookSearchRepository implements BookSearchRepository {
     }).take(maxResults).toList();
   }
 
+  final Map<String, BookSearchResult> _mockDetails = {};
+
+  void setMockDetail(String googleBooksId, BookSearchResult detail) {
+    _mockDetails[googleBooksId] = detail;
+  }
+
+  @override
+  Future<BookSearchResult?> getDetail(String googleBooksId) async {
+    await _simulateLatency(null, demoControls: demoControls);
+    if (demoControls?.isDataEmpty == true) return null;
+    if (_mockDetails.containsKey(googleBooksId)) {
+      return _mockDetails[googleBooksId];
+    }
+    try {
+      return _demoBooks.firstWhere((b) => b.googleBooksId == googleBooksId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<BookSearchResult?> randomBook() async {
     await _simulateLatency(null, demoControls: demoControls);
@@ -673,22 +693,14 @@ class FakeLedgerRepository implements LedgerRepository {
 
 class FakeFeedbackRepository implements FeedbackRepository {
   final DemoControls? demoControls;
-  final List<FeedbackEntry> _entries = [];
 
   FakeFeedbackRepository({this.demoControls});
 
   @override
-  Future<List<FeedbackEntry>> getAll() async {
+  Future<List<TeamFeedback>> getAll() async {
     await _simulateLatency(null, demoControls: demoControls);
     if (demoControls?.isDataEmpty == true) return [];
-    return List.of(_entries)
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-  }
-
-  @override
-  Future<void> save(FeedbackEntry entry) async {
-    await _simulateLatency(null, demoControls: demoControls);
-    _entries.add(entry);
+    return teamFeedbacks;
   }
 }
 
@@ -738,7 +750,10 @@ class FakeChatRepository implements ChatRepository {
 
   @override
   Future<String> sendMessage(
-      String message, List<ChatMessage> history) async {
+    String message,
+    List<ChatMessage> history, {
+    void Function(String status)? onStatusUpdate,
+  }) async {
     await _simulateLatency(null, demoControls: demoControls);
     return 'Jawaban contoh (mode demo)';
   }

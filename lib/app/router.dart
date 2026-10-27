@@ -21,6 +21,7 @@ import '../features/reading/finished_book_page.dart';
 import '../features/reading/reading_progress_page.dart';
 import '../features/reading/reading_timer_page.dart';
 import '../features/tools/ai_chat_page.dart';
+import '../features/tools/bookstore_map/bookstore_map_page.dart';
 import '../features/tools/currency_converter_page.dart';
 import '../features/tools/feedback_page.dart';
 import '../features/tools/snake/snake_page.dart';
@@ -258,6 +259,13 @@ GoRouter createAppRouter([AuthController? authController]) {
         parentNavigatorKey: rootNavigatorKey,
         path: '/profile/ledger',
         builder: (context, state) => const ReadingLedgerPage(),
+      ),
+
+      // Maps / Bookstore route — Fase S6
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: '/maps/bookstores',
+        builder: (context, state) => const BookstoreMapPage(),
       ),
     ],
   );

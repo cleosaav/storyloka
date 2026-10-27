@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -13,7 +14,9 @@ import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
+import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
+import '../../data/repositories/book_search_repository.dart';
 import '../../data/repositories/library_repository.dart';
 import '../../data/repositories/reading_repository.dart';
 
@@ -41,6 +44,10 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
   late TextEditingController _totalPageController;
   int _currentPage = 0;
   int _totalPages = 0;
+  bool _needsTotalInput = false;
+  bool _isEditingTotalPage = false;
+  String? _totalPageError;
+  String? _currentPageError;
   bool _isSaving = false;
 
   @override
@@ -74,18 +81,65 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
           _isLoading = false;
           _errorMessage = 'Buku tidak ditemukan di koleksi.';
         });
-      } else {
-        _book = book;
-        _currentPage = book.currentPage;
-        _totalPages = book.pageCount ?? 0;
-
-        _pageController.text = '$_currentPage';
-        _totalPageController.text = _totalPages > 0 ? '$_totalPages' : '';
-
-        setState(() {
-          _isLoading = false;
-        });
+        return;
       }
+
+      _book = book;
+      _currentPage = book.currentPage;
+      int pages = book.pageCount ?? 0;
+
+      // Coba isi total halaman otomatis dari sumber lain sebelum meminta pengguna (Fase S2)
+      if (pages <= 0) {
+        try {
+          final searchRepo = context.read<BookSearchRepository>();
+          int? autoPageCount;
+
+          if (book.isbn != null && book.isbn!.trim().isNotEmpty) {
+            final results = await searchRepo
+                .search(book.isbn!, filter: 'isbn', maxResults: 1)
+                .timeout(const Duration(seconds: 4));
+            if (results.isNotEmpty &&
+                results.first.pageCount != null &&
+                results.first.pageCount! > 0) {
+              autoPageCount = results.first.pageCount;
+            }
+          }
+
+          if (autoPageCount == null && book.title.trim().isNotEmpty) {
+            final results = await searchRepo
+                .search(book.title, filter: 'title', maxResults: 3)
+                .timeout(const Duration(seconds: 4));
+            for (final r in results) {
+              if (r.pageCount != null && r.pageCount! > 0) {
+                autoPageCount = r.pageCount;
+                break;
+              }
+            }
+          }
+
+          if (autoPageCount != null && autoPageCount > 0) {
+            pages = autoPageCount;
+            final updatedBook = book.copyWith(pageCount: autoPageCount);
+            await library.updateBook(updatedBook);
+            _book = updatedBook;
+          }
+        } catch (_) {
+          // Abaikan kegagalan jaringan/timeout agar tidak menghalangi pengguna
+        }
+      }
+
+      _totalPages = pages;
+      _needsTotalInput = pages <= 0;
+      _isEditingTotalPage = false;
+      _totalPageError = null;
+      _currentPageError = null;
+
+      _pageController.text = '$_currentPage';
+      _totalPageController.text = pages > 0 ? '$pages' : '';
+
+      setState(() {
+        _isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -99,30 +153,77 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
     final newPage = value.round();
     setState(() {
       _currentPage = newPage;
+      _currentPageError = null;
       _pageController.text = '$newPage';
     });
   }
 
   void _onPageTextChanged(String value) {
-    final parsed = int.tryParse(value);
-    if (parsed != null) {
+    final clean = value.trim();
+    if (clean.isEmpty) {
       setState(() {
-        _currentPage = parsed.clamp(0, _totalPages > 0 ? _totalPages : parsed);
+        _currentPage = 0;
+        _currentPageError = null;
       });
+      return;
     }
+
+    final parsed = int.tryParse(clean);
+    if (parsed == null) {
+      setState(() {
+        _currentPageError = 'Format angka tidak valid';
+      });
+      return;
+    }
+
+    setState(() {
+      _currentPage = parsed;
+      if (parsed < 0) {
+        _currentPageError = 'Halaman tidak boleh kurang dari 0';
+      } else if (_totalPages > 0 && parsed > _totalPages) {
+        _currentPageError = 'Halaman tidak boleh melebihi total ($_totalPages)';
+      } else {
+        _currentPageError = null;
+      }
+    });
   }
 
   void _onTotalPageTextChanged(String value) {
-    final parsed = int.tryParse(value);
-    if (parsed != null && parsed > 0) {
+    final clean = value.trim();
+    if (clean.isEmpty) {
       setState(() {
-        _totalPages = parsed;
-        if (_currentPage > _totalPages) {
-          _currentPage = _totalPages;
-          _pageController.text = '$_currentPage';
-        }
+        _totalPages = 0;
+        _totalPageError = 'Total halaman wajib diisi';
       });
+      return;
     }
+
+    final parsed = int.tryParse(clean);
+    if (parsed == null || parsed < 1 || parsed > 99999) {
+      setState(() {
+        _totalPages = parsed ?? 0;
+        _totalPageError = 'Total halaman harus antara 1 sampai 99999';
+      });
+      return;
+    }
+
+    setState(() {
+      _totalPages = parsed;
+      _totalPageError = null;
+      if (_currentPage > _totalPages) {
+        _currentPageError = 'Halaman tidak boleh melebihi total ($_totalPages)';
+      } else {
+        _currentPageError = null;
+      }
+    });
+  }
+
+  bool get _canSave {
+    if (_isSaving || _book == null) return false;
+    if (_totalPageError != null || _currentPageError != null) return false;
+    if (_totalPages < 1 || _totalPages > 99999) return false;
+    if (_currentPage < 0 || _currentPage > _totalPages) return false;
+    return true;
   }
 
   String _formatSessionDuration(int totalSeconds) {
@@ -135,25 +236,7 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
   }
 
   Future<void> _saveProgress() async {
-    if (_book == null || _isSaving) return;
-
-    if (_totalPages <= 0) {
-      AppSnackBar.show(
-        context,
-        message: 'Mohon isi total halaman buku terlebih dahulu.',
-        type: SnackBarType.error,
-      );
-      return;
-    }
-
-    if (_currentPage < 0 || _currentPage > _totalPages) {
-      AppSnackBar.show(
-        context,
-        message: 'Halaman saat ini harus antara 0 dan $_totalPages.',
-        type: SnackBarType.error,
-      );
-      return;
-    }
+    if (!_canSave) return;
 
     setState(() => _isSaving = true);
 
@@ -175,6 +258,9 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
       await library.updateBook(updated);
 
       if (!mounted) return;
+
+      _needsTotalInput = false;
+      _isEditingTotalPage = false;
 
       AppSnackBar.show(
         context,
@@ -206,6 +292,15 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
   Future<void> _confirmFinishedThisBook() async {
     if (_book == null || _isSaving) return;
 
+    if (_totalPages <= 0) {
+      AppSnackBar.show(
+        context,
+        message: 'Mohon isi total halaman buku terlebih dahulu.',
+        type: SnackBarType.error,
+      );
+      return;
+    }
+
     final confirmed = await AppDialog.showConfirm(
       context: context,
       title: 'Selesaikan Buku Ini?',
@@ -218,7 +313,7 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
     if (confirmed == true && mounted) {
       setState(() => _isSaving = true);
 
-      final totalP = _totalPages > 0 ? _totalPages : (_book!.pageCount ?? _currentPage);
+      final totalP = _totalPages;
       final updated = _book!.copyWith(
         currentPage: totalP,
         pageCount: totalP,
@@ -284,7 +379,10 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
           ),
         ),
       ),
-      body: _buildBody(isDark),
+      body: ResponsiveBody(
+        padding: EdgeInsets.zero,
+        child: _buildBody(isDark),
+      ),
     );
   }
 
@@ -429,11 +527,39 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Current Progress',
-                  style: AppText.sectionHeading(
-                    color: isDark ? AppColors.inkDark : AppColors.ink,
-                  ),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: AppSpacing.s,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    Text(
+                      'Current Progress',
+                      style: AppText.sectionHeading(
+                        color: isDark ? AppColors.inkDark : AppColors.ink,
+                      ),
+                    ),
+                    if (!_needsTotalInput && !_isEditingTotalPage && _totalPages > 0)
+                      GestureDetector(
+                        key: const Key('change_total_pages_link'),
+                        onTap: () {
+                          setState(() {
+                            _isEditingTotalPage = true;
+                            _totalPageController.text = '$_totalPages';
+                            _totalPageError = null;
+                          });
+                        },
+                        child: Text(
+                          'Ubah total halaman',
+                          style: AppText.caption(
+                            color: context.primaryColor,
+                          ).copyWith(
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: AppSpacing.m),
                 ReadingProgressBar(
@@ -445,31 +571,70 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
           ),
           const SizedBox(height: AppSpacing.l),
 
-          // Jika total pages belum diisi / 0: sediakan input total halaman wajib
-          if (_totalPages <= 0) ...[
+          // Total Halaman Buku (Wajib jika data belum ada, atau saat pengguna ingin mengubahnya)
+          if (_needsTotalInput || _isEditingTotalPage) ...[
             AppCard(
               padding: const EdgeInsets.all(AppSpacing.l),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Total Halaman Buku (Wajib)',
-                    style: AppText.bodyMedium(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ).copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _needsTotalInput
+                              ? 'Total Halaman Buku (Wajib)'
+                              : 'Ubah Total Halaman Buku',
+                          style: AppText.bodyMedium(
+                            color: isDark ? AppColors.inkDark : AppColors.ink,
+                          ).copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      if (_isEditingTotalPage && !_needsTotalInput) ...[
+                        const SizedBox(width: AppSpacing.s),
+                        IconButton(
+                          key: const Key('cancel_change_total_pages_button'),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Batal',
+                          onPressed: () {
+                            setState(() {
+                              _isEditingTotalPage = false;
+                              _totalPages = _book?.pageCount ?? 0;
+                              _totalPageController.text =
+                                  _totalPages > 0 ? '$_totalPages' : '';
+                              _totalPageError = null;
+                              if (_currentPage > _totalPages) {
+                                _currentPageError =
+                                    'Halaman tidak boleh melebihi total ($_totalPages)';
+                              } else {
+                                _currentPageError = null;
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'Buku ini belum memiliki data total halaman. Silakan isi terlebih dahulu:',
+                    _needsTotalInput
+                        ? 'Buku ini belum memiliki data total halaman. Silakan isi terlebih dahulu (1 - 99999):'
+                        : 'Masukkan total halaman buku yang benar (1 - 99999):',
                     style: AppText.caption(
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.m),
                   AppTextField(
+                    key: const Key('total_page_input'),
                     controller: _totalPageController,
                     hintText: 'Contoh: 350',
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    errorText: _totalPageError,
                     onChanged: _onTotalPageTextChanged,
                   ),
                 ],
@@ -492,37 +657,47 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
                 ),
                 const SizedBox(height: AppSpacing.m),
 
-                // Slider (aktif jika totalPages > 0)
+                // Slider (aktif jika totalPages > 0, divisions null bila halaman besar agar tidak berat)
                 if (_totalPages > 0) ...[
                   Slider(
                     value: _currentPage.clamp(0, _totalPages).toDouble(),
                     min: 0,
                     max: _totalPages.toDouble(),
-                    divisions: _totalPages > 0 ? _totalPages : 1,
-                    semanticFormatterCallback: (val) => 'Halaman ${val.round()} dari $_totalPages',
+                    divisions: _totalPages > 300 ? null : _totalPages,
+                    semanticFormatterCallback: (val) =>
+                        'Halaman ${val.round()} dari $_totalPages',
                     activeColor: context.primaryColor,
-                    inactiveColor: isDark ? AppColors.borderDark : AppColors.sageGreen.withValues(alpha: 0.3),
+                    inactiveColor: isDark
+                        ? AppColors.borderDark
+                        : AppColors.sageGreen.withValues(alpha: 0.3),
                     onChanged: _onSliderChanged,
                   ),
                   const SizedBox(height: AppSpacing.s),
                 ],
 
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: AppTextField(
+                        key: const Key('current_page_input'),
                         controller: _pageController,
                         hintText: 'Halaman saat ini',
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         textAlign: TextAlign.center,
+                        errorText: _currentPageError,
                         onChanged: _onPageTextChanged,
                       ),
                     ),
                     const SizedBox(width: AppSpacing.m),
-                    Text(
-                      '/ ${_totalPages > 0 ? _totalPages : "?"} hlm',
-                      style: AppText.bodyMedium(
-                        color: isDark ? AppColors.inkDark : AppColors.ink,
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Text(
+                        '/ ${_totalPages > 0 ? _totalPages : "?"} hlm',
+                        style: AppText.bodyMedium(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
                       ),
                     ),
                   ],
@@ -536,7 +711,7 @@ class _ReadingProgressPageState extends State<ReadingProgressPage> {
           PrimaryButton(
             label: _isSaving ? 'Menyimpan...' : 'Save Progress',
             icon: Icons.save_outlined,
-            onPressed: _isSaving ? null : _saveProgress,
+            onPressed: _canSave ? _saveProgress : null,
           ),
           const SizedBox(height: AppSpacing.m),
           SecondaryButton(

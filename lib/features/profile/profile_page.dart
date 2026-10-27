@@ -231,8 +231,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final sessionStore = context.read<SecureSessionStore>();
 
     final user = authController.currentUser;
-    final userName = user?.name ?? 'Demo Reader';
-    final userEmail = user?.email ?? 'demo@storyloka.app';
+    final userName = user?.name ?? 'Pembaca StoryLoka';
+    final userEmail = user?.email ?? '';
     final userBio = user?.bio?.isNotEmpty == true
         ? user!.bio!
         : 'Pencinta buku dan penjelajah cerita.';

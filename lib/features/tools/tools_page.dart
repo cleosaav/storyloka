@@ -46,7 +46,7 @@ class _ToolsPageState extends State<ToolsPage> {
         icon: Icons.favorite_outline_rounded,
         iconColor: AppColors.softApricot,
         title: 'Kesan & Pesan',
-        description: 'Bagikan kesan dan pesanmu tentang mata kuliah Pemrograman Aplikasi Mobile.',
+        description: 'Baca kesan dan pesan dari tim kami',
         route: '/tools/feedback',
         isDark: isDark,
       ),

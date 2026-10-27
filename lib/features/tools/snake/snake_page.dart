@@ -38,6 +38,8 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   int _highScore = 0;
   bool _scoreLoaded = false;
   bool _tiltControlEnabled = false;
+  double? _lastAvailableWidth;
+  int? _activeTargetRows;
 
   @override
   void initState() {
@@ -51,6 +53,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    _ticker = null;
     SensorService.instance.stopTiltListening();
     super.dispose();
   }
@@ -116,8 +119,10 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
       SensorService.instance.startTiltListening(
         onDirection: (dir) {
           if (!mounted) return;
-          if (_engine.status == SnakeStatus.ready) _startGame();
-          _engine.setDirection(dir);
+          // Hanya ubah arah saat game berjalan. Jangan pernah memicu start otomatis saat baru diaktifkan.
+          if (_engine.status == SnakeStatus.running) {
+            _engine.setDirection(dir);
+          }
         },
       );
     } else {
@@ -134,7 +139,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
       try {
         final repo = context.read<ScoreRepository>();
         final auth = context.read<AuthController>();
-        final userId = auth.currentUser?.id ?? 'demo';
+        final userId = auth.currentUser?.id ?? 'guest';
 
         await repo.saveScore(GameScore(
           id: _uuid.v4(),
@@ -216,7 +221,16 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
                 icon: Icons.replay_rounded,
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  setState(() => _engine.reset());
+                  _ticker?.cancel();
+                  setState(() {
+                    if (_activeTargetRows != null &&
+                        _engine.rows != _activeTargetRows) {
+                      _engine =
+                          SnakeEngine(cols: _cols, rows: _activeTargetRows!);
+                    } else {
+                      _engine.reset();
+                    }
+                  });
                   _startGame();
                 },
               ),
@@ -240,6 +254,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
     if (_engine.status != SnakeStatus.running) return;
     final dx = details.delta.dx;
     final dy = details.delta.dy;
+    if (dx.abs() < 3 && dy.abs() < 3) return;
     if (dx.abs() > dy.abs()) {
       _engine.setDirection(dx > 0 ? SnakeDirection.right : SnakeDirection.left);
     } else {
@@ -335,110 +350,139 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
 
               // Papan permainan dalam AppCard
               Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
-                    borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                    border: Border.all(
-                      color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isDark ? AppColors.primaryDark : AppColors.deepTeal).withValues(alpha: 0.07),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                    child: GestureDetector(
-                      key: const ValueKey('snake_board_gesture'),
-                      behavior: HitTestBehavior.opaque,
-                      onPanUpdate: _engine.status == SnakeStatus.running ? _handleSwipe : null,
-                      onTap: () {
-                        if (_engine.status == SnakeStatus.ready) {
-                          _startGame();
-                        }
-                      },
-                      child: LayoutBuilder(
-                        builder: (ctx, constraints) {
-                          return Stack(
-                            children: [
-                              CustomPaint(
-                                size: Size(constraints.maxWidth, constraints.maxHeight),
-                                painter: _SnakePainter(
-                                  engine: _engine,
-                                  cols: _cols,
-                                  isDark: isDark,
-                                ),
+                child: LayoutBuilder(
+                  builder: (ctx, constraints) {
+                    final availableWidth = constraints.maxWidth;
+                    final availableHeight = constraints.maxHeight;
+                    final cell = availableWidth / _cols;
+                    final calculatedRows = (availableHeight / cell).floor();
+                    final targetRows = calculatedRows.clamp(5, 100);
+
+                    // Satu sumber kebenaran untuk ukuran papan (PRD §10.1):
+                    // Buat / ubah ukuran engine hanya saat status ready.
+                    if (_engine.status == SnakeStatus.ready &&
+                        _engine.rows != targetRows) {
+                      _engine = SnakeEngine(cols: _cols, rows: targetRows);
+                      _activeTargetRows = targetRows;
+                    } else if (_engine.status == SnakeStatus.running &&
+                        _lastAvailableWidth != null &&
+                        _lastAvailableWidth != availableWidth) {
+                      // Rotasi layar saat game berjalan: otomatis pause & pertahankan ukuran
+                      _engine.pause();
+                      _ticker?.cancel();
+                    }
+                    _lastAvailableWidth = availableWidth;
+
+                    final boardWidth = availableWidth;
+                    final boardHeight = _engine.rows * cell;
+
+                    return Center(
+                      child: SizedBox(
+                        width: boardWidth,
+                        height: boardHeight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.surfaceDark : AppColors.warmIvory,
+                            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                            border: Border.all(
+                              color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isDark ? AppColors.primaryDark : AppColors.deepTeal).withValues(alpha: 0.07),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               ),
-                              // Overlay "Tap to start"
-                              if (_engine.status == SnakeStatus.ready)
-                                Center(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: AppSpacing.xl,
-                                      vertical: AppSpacing.l,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: (isDark ? AppColors.bgDark : AppColors.ink)
-                                          .withValues(alpha: 0.72),
-                                      borderRadius: BorderRadius.circular(AppSpacing.radiusL),
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.menu_book_rounded,
-                                          color: AppColors.softApricot,
-                                          size: 36,
-                                        ),
-                                        const SizedBox(height: AppSpacing.s),
-                                        Text(
-                                          'Tap to start',
-                                          style: AppText.bodyMedium(
-                                            color: AppColors.white,
-                                          ).copyWith(fontWeight: FontWeight.bold),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'Kumpulkan buku sebanyak mungkin!',
-                                          style: AppText.caption(
-                                            color: AppColors.sageGreen,
-                                          ),
-                                        ),
-                                      ],
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                            child: GestureDetector(
+                              key: const ValueKey('snake_board_gesture'),
+                              behavior: HitTestBehavior.opaque,
+                              onPanUpdate: _engine.status == SnakeStatus.running ? _handleSwipe : null,
+                              onTap: () {
+                                if (_engine.status == SnakeStatus.ready) {
+                                  _startGame();
+                                }
+                              },
+                              child: Stack(
+                                children: [
+                                  CustomPaint(
+                                    size: Size(boardWidth, boardHeight),
+                                    painter: SnakePainter(
+                                      engine: _engine,
+                                      isDark: isDark,
                                     ),
                                   ),
-                                ),
-                              // Overlay "Paused"
-                              if (_engine.status == SnakeStatus.paused)
-                                Center(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: AppSpacing.xl,
-                                      vertical: AppSpacing.l,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: (isDark ? AppColors.bgDark : AppColors.ink)
-                                          .withValues(alpha: 0.72),
-                                      borderRadius: BorderRadius.circular(AppSpacing.radiusL),
-                                    ),
-                                    child: Text(
-                                      'Paused',
-                                      style: AppText.sectionHeading(
-                                        color: AppColors.white,
+                                  // Overlay "Tap to start"
+                                  if (_engine.status == SnakeStatus.ready)
+                                    Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: AppSpacing.xl,
+                                          vertical: AppSpacing.l,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: (isDark ? AppColors.bgDark : AppColors.ink)
+                                              .withValues(alpha: 0.72),
+                                          borderRadius: BorderRadius.circular(AppSpacing.radiusL),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.menu_book_rounded,
+                                              color: AppColors.softApricot,
+                                              size: 36,
+                                            ),
+                                            const SizedBox(height: AppSpacing.s),
+                                            Text(
+                                              'Tap to start',
+                                              style: AppText.bodyMedium(
+                                                color: AppColors.white,
+                                              ).copyWith(fontWeight: FontWeight.bold),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Kumpulkan buku sebanyak mungkin!',
+                                              style: AppText.caption(
+                                                color: AppColors.sageGreen,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
+                                  // Overlay "Paused"
+                                  if (_engine.status == SnakeStatus.paused)
+                                    Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: AppSpacing.xl,
+                                          vertical: AppSpacing.l,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: (isDark ? AppColors.bgDark : AppColors.ink)
+                                              .withValues(alpha: 0.72),
+                                          borderRadius: BorderRadius.circular(AppSpacing.radiusL),
+                                        ),
+                                        child: Text(
+                                          'Paused',
+                                          style: AppText.sectionHeading(
+                                            color: AppColors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: AppSpacing.s),
@@ -493,26 +537,24 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
 
 // ─── Snake CustomPainter ──────────────────────────────────────────────────────
 
-class _SnakePainter extends CustomPainter {
+class SnakePainter extends CustomPainter {
   final SnakeEngine engine;
-  final int cols;
   final bool isDark;
 
-  const _SnakePainter({
+  const SnakePainter({
     required this.engine,
-    required this.cols,
     required this.isDark,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cellW = size.width / cols;
-    final rows = (size.height / cellW).floor();
-    final cellH = size.height / rows;
+    final cell = size.width / engine.cols;
+    final rows = engine.rows;
+    final boardHeight = rows * cell;
 
     // Latar
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
+      Rect.fromLTWH(0, 0, size.width, boardHeight),
       Paint()..color = isDark ? AppColors.surfaceDark : AppColors.warmIvory,
     );
 
@@ -521,11 +563,13 @@ class _SnakePainter extends CustomPainter {
       ..color = (isDark ? AppColors.borderDark : AppColors.borderNeutral)
           .withValues(alpha: 0.4)
       ..strokeWidth = 0.5;
-    for (int c = 0; c <= cols; c++) {
-      canvas.drawLine(Offset(c * cellW, 0), Offset(c * cellW, size.height), gridPaint);
+    for (int c = 0; c <= engine.cols; c++) {
+      final x = c * cell;
+      canvas.drawLine(Offset(x, 0), Offset(x, boardHeight), gridPaint);
     }
     for (int r = 0; r <= rows; r++) {
-      canvas.drawLine(Offset(0, r * cellH), Offset(size.width, r * cellH), gridPaint);
+      final y = r * cell;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
     // Ular — tubuh
@@ -534,13 +578,13 @@ class _SnakePainter extends CustomPainter {
     const bodyRadius = Radius.circular(4);
 
     for (int i = 0; i < engine.snake.length; i++) {
-      final cell = engine.snake[i];
+      final cellPos = engine.snake[i];
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
-          cell.col * cellW + 1,
-          cell.row * cellH + 1,
-          cellW - 2,
-          cellH - 2,
+          cellPos.col * cell + 1,
+          cellPos.row * cell + 1,
+          cell - 2,
+          cell - 2,
         ),
         bodyRadius,
       );
@@ -551,10 +595,10 @@ class _SnakePainter extends CustomPainter {
     if (engine.snake.isNotEmpty) {
       final head = engine.snake.first;
       final eyePaint = Paint()..color = isDark ? AppColors.bgDark : AppColors.white;
-      final cx = head.col * cellW + cellW / 2;
-      final cy = head.row * cellH + cellH / 2;
-      canvas.drawCircle(Offset(cx - cellW * 0.15, cy - cellH * 0.1), cellW * 0.1, eyePaint);
-      canvas.drawCircle(Offset(cx + cellW * 0.15, cy - cellH * 0.1), cellW * 0.1, eyePaint);
+      final cx = head.col * cell + cell / 2;
+      final cy = head.row * cell + cell / 2;
+      canvas.drawCircle(Offset(cx - cell * 0.15, cy - cell * 0.1), cell * 0.1, eyePaint);
+      canvas.drawCircle(Offset(cx + cell * 0.15, cy - cell * 0.1), cell * 0.1, eyePaint);
     }
 
     // Buku — persegi panjang softApricot + punggung deepTeal (bukan emoji)
@@ -562,15 +606,15 @@ class _SnakePainter extends CustomPainter {
     final bookSpinePaint = Paint()
       ..color = isDark ? AppColors.primaryDark : AppColors.deepTeal;
 
-    final bx = engine.book.col * cellW;
-    final by = engine.book.row * cellH;
-    final bookMargin = cellW * 0.1;
-    final spineW = cellW * 0.2;
+    final bx = engine.book.col * cell;
+    final by = engine.book.row * cell;
+    final bookMargin = cell * 0.1;
+    final spineW = cell * 0.2;
 
     // Badan buku
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(bx + bookMargin, by + bookMargin, cellW - bookMargin * 2, cellH - bookMargin * 2),
+        Rect.fromLTWH(bx + bookMargin, by + bookMargin, cell - bookMargin * 2, cell - bookMargin * 2),
         const Radius.circular(3),
       ),
       bookBodyPaint,
@@ -578,7 +622,7 @@ class _SnakePainter extends CustomPainter {
     // Punggung buku (strip kiri)
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(bx + bookMargin, by + bookMargin, spineW, cellH - bookMargin * 2),
+        Rect.fromLTWH(bx + bookMargin, by + bookMargin, spineW, cell - bookMargin * 2),
         const Radius.circular(3),
       ),
       bookSpinePaint,
@@ -588,15 +632,15 @@ class _SnakePainter extends CustomPainter {
       ..color = (isDark ? AppColors.inkDark : AppColors.deepTeal).withValues(alpha: 0.35)
       ..strokeWidth = 0.8;
     final lineX1 = bx + bookMargin + spineW + 2;
-    final lineX2 = bx + cellW - bookMargin - 2;
-    final lineY1 = by + cellH * 0.38;
-    final lineY2 = by + cellH * 0.58;
+    final lineX2 = bx + cell - bookMargin - 2;
+    final lineY1 = by + cell * 0.38;
+    final lineY2 = by + cell * 0.58;
     canvas.drawLine(Offset(lineX1, lineY1), Offset(lineX2, lineY1), linePaint);
     canvas.drawLine(Offset(lineX1, lineY2), Offset(lineX2, lineY2), linePaint);
   }
 
   @override
-  bool shouldRepaint(_SnakePainter old) => true;
+  bool shouldRepaint(covariant SnakePainter oldDelegate) => true;
 }
 
 // ─── D-Pad Widget ─────────────────────────────────────────────────────────────

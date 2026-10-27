@@ -28,11 +28,37 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await _createTables(db);
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _migrateToV2(db);
+        }
+      },
+      onOpen: (db) async {
+        // Sanitasi baris lama dengan user_id non-UUID / palsu (Fase S7)
+        await _sanitizeInvalidUserData(db);
+      },
     );
+  }
+
+  /// Migrasi skema database versi 2 — PRD §8.1 & Fase S7.
+  Future<void> _migrateToV2(Database db) async {
+    await _sanitizeInvalidUserData(db);
+  }
+
+  /// Menghapus entri percobaan lama dengan user_id non-UUID tanpa menghapus data pengguna valid.
+  Future<void> _sanitizeInvalidUserData(Database db) async {
+    try {
+      await db.execute('''
+        DELETE FROM feedbacks
+        WHERE user_id IN ('default_user', 'demo', 'demo_user', 'guest', '')
+           OR length(user_id) != 36
+           OR user_id NOT LIKE '%-%-%-%-%';
+      ''');
+    } catch (_) {}
   }
 
   /// Membuat semua tabel dan indeks sesuai PRD §8.1.

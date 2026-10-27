@@ -6,6 +6,8 @@ import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:storyloka/data/models/chat_message.dart';
+import 'package:storyloka/data/repositories/remote/ai_chat_exception.dart';
+import 'package:storyloka/data/repositories/remote/circuit_breaker.dart';
 import 'package:storyloka/data/repositories/remote/deepseek_chat_repository.dart';
 import 'package:storyloka/data/repositories/remote/fallback_chat_repository.dart';
 import 'package:storyloka/data/repositories/remote/gemini_chat_repository.dart';
@@ -51,6 +53,10 @@ void main() {
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+  });
+
+  setUp(() {
+    CircuitBreaker.reset();
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -206,6 +212,7 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       final result = await repo.sendMessage('Halo', []);
       expect(result, 'Dari DeepSeek');
@@ -214,7 +221,6 @@ void main() {
 
     test('11. Fallback ke Gemini saat DeepSeek timeout (null statusCode)', () async {
       final dsClient = MockClient((_) async {
-        await Future.delayed(const Duration(milliseconds: 10));
         throw DeepSeekChatException('Koneksi ke DeepSeek timeout.');
       });
       final gmClient = MockClient((_) async =>
@@ -223,6 +229,7 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       final result = await repo.sendMessage('Halo', []);
       expect(result, 'Dari Gemini (fallback)');
@@ -237,6 +244,7 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       final result = await repo.sendMessage('Halo', []);
       expect(result, 'Dari Gemini (setelah rate limit DS)');
@@ -251,52 +259,51 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       final result = await repo.sendMessage('Halo', []);
       expect(result, 'Dari Gemini (setelah 500 DS)');
     });
 
-    test('14. TIDAK fallback saat DeepSeek error 401 (auth error — lempar ke UI)', () async {
+    test('14. Fallback ke Gemini saat DeepSeek error 401 (auth error — Fase S1)', () async {
       bool geminiCalled = false;
       final dsClient = MockClient((_) async =>
           http.Response('{"error":"unauthorized"}', 401));
       final gmClient = MockClient((_) async {
         geminiCalled = true;
-        return http.Response(_geminiOk('ok'), 200);
+        return http.Response(_geminiOk('Dari Gemini (setelah 401 DS)'), 200);
       });
 
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
-      await expectLater(
-        () => repo.sendMessage('Halo', []),
-        throwsA(isA<DeepSeekChatException>()),
-      );
-      expect(geminiCalled, isFalse);
+      final result = await repo.sendMessage('Halo', []);
+      expect(result, 'Dari Gemini (setelah 401 DS)');
+      expect(geminiCalled, isTrue);
     });
 
-    test('15. TIDAK fallback saat DeepSeek error 400 (config error)', () async {
+    test('15. Fallback ke Gemini saat DeepSeek error 400 (config error — Fase S1)', () async {
       bool geminiCalled = false;
       final dsClient = MockClient((_) async =>
           http.Response('{"error":"bad request"}', 400));
       final gmClient = MockClient((_) async {
         geminiCalled = true;
-        return http.Response(_geminiOk('ok'), 200);
+        return http.Response(_geminiOk('Dari Gemini (setelah 400 DS)'), 200);
       });
 
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
-      await expectLater(
-        () => repo.sendMessage('Halo', []),
-        throwsA(isA<DeepSeekChatException>()),
-      );
-      expect(geminiCalled, isFalse);
+      final result = await repo.sendMessage('Halo', []);
+      expect(result, 'Dari Gemini (setelah 400 DS)');
+      expect(geminiCalled, isTrue);
     });
 
-    test('16. Melempar error Gemini jika kedua provider gagal', () async {
+    test('16. Melempar error ramah jika kedua provider gagal (Fase S1)', () async {
       final dsClient = MockClient((_) async =>
           throw DeepSeekChatException('Timeout DS'));
       final gmClient = MockClient((_) async =>
@@ -305,10 +312,15 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       await expectLater(
         () => repo.sendMessage('Halo', []),
-        throwsA(isA<GeminiChatException>()),
+        throwsA(isA<AiChatException>().having(
+          (e) => e.message,
+          'message',
+          contains('Layanan AI sedang ramai'),
+        )),
       );
     });
 
@@ -321,6 +333,7 @@ void main() {
       final repo = FallbackChatRepository(
         primary: _deepSeekRepo(dsClient),
         fallback: _geminiRepo(gmClient),
+        delayFn: (_) async {},
       );
       final result = await repo.sendMessage('Halo', []);
       expect(result, 'Dari Gemini (setelah saldo DS habis)');

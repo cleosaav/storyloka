@@ -169,7 +169,7 @@ void main() {
   });
 
   group('Fase B4 — SyncService: Push & Urutan Tabel (PRD §8.3)', () {
-    test('pushPending mengeksekusi tabel dengan urutan PRD: user_books -> reading_sessions -> ledger_blocks -> feedbacks -> game_scores', () async {
+    test('pushPending mengeksekusi tabel dengan urutan: user_books -> reading_sessions -> ledger_blocks -> game_scores (feedbacks dikecualikan)', () async {
       const userId = 'usr_001';
 
       // Masukkan baris pending di setiap tabel
@@ -231,12 +231,11 @@ void main() {
       // Jalankan push
       await syncService.pushPending(userId: userId);
 
-      // Verifikasi urutan eksekusi push
+      // Verifikasi urutan eksekusi push (tanpa feedbacks — S7)
       expect(fakeRemote.pushOrder, [
         'user_books',
         'reading_sessions',
         'ledger_blocks',
-        'feedbacks',
         'game_scores',
       ]);
 
@@ -426,14 +425,14 @@ void main() {
       expect(booksCount, 1);
       expect(sessionsCount, 1);
       expect(ledgerCount, 1);
-      expect(feedbackCount, 1);
+      expect(feedbackCount, 0); // feedbacks dikecualikan dari sinkronisasi (Fase S7)
       expect(scoreCount, 1);
 
       // Panggil pull kedua & ketiga (simulasi sync berulang)
       await syncService.pullAll(userId);
       await syncService.pullAll(userId);
 
-      // Jumlah baris HARUS tetap 1 di setiap tabel (TIDAK ADA DUPLIKASI)
+      // Jumlah baris HARUS tetap konsisten di setiap tabel (TIDAK ADA DUPLIKASI)
       booksCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM user_books'));
       sessionsCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM reading_sessions'));
       ledgerCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM ledger_blocks'));
@@ -443,7 +442,7 @@ void main() {
       expect(booksCount, 1);
       expect(sessionsCount, 1);
       expect(ledgerCount, 1);
-      expect(feedbackCount, 1);
+      expect(feedbackCount, 0);
       expect(scoreCount, 1);
     });
 

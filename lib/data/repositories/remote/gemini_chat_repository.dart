@@ -10,19 +10,21 @@ import '../../../core/config/env.dart';
 import '../../database_helper.dart';
 import '../../models/chat_message.dart';
 import '../chat_repository.dart';
+import 'ai_chat_exception.dart';
 
-/// Exception khusus untuk kesalahan layanan Gemini AI — Fase R3.
-class GeminiChatException implements Exception {
-  final String message;
-  final int? statusCode;
-
-  GeminiChatException(this.message, {this.statusCode});
-
-  @override
-  String toString() => message;
+/// Exception khusus untuk kesalahan layanan Gemini AI — Fase R3 & S1.
+class GeminiChatException extends AiChatException {
+  GeminiChatException(
+    super.message, {
+    super.statusCode,
+    super.retryAfter,
+    super.isTimeout = false,
+    super.isSocket = false,
+    String? modelName,
+  }) : super(providerName: modelName != null ? 'Gemini ($modelName)' : 'Gemini');
 }
 
-/// Implementasi nyata ChatRepository menggunakan Google Gemini REST API — PRD §9.3 & Fase R3.
+/// Implementasi nyata ChatRepository menggunakan Google Gemini REST API — PRD §9.3, Fase R3, & S1.
 class GeminiChatRepository implements ChatRepository {
   final http.Client _client;
   final DatabaseHelper _dbHelper;
@@ -47,15 +49,28 @@ class GeminiChatRepository implements ChatRepository {
   })  : _client = client ?? http.Client(),
         _dbHelper = dbHelper ?? DatabaseHelper.instance;
 
+  String get activeModel {
+    final candidate = (model != null && model!.trim().isNotEmpty)
+        ? model!.trim()
+        : Env.geminiModel.trim();
+    return candidate.isNotEmpty ? candidate : 'gemini-3.5-flash-lite';
+  }
+
+  String get id => 'gemini:$activeModel';
+  String get displayName => 'Gemini ($activeModel)';
+
   Future<String> _getUserId() async {
     final provider = userIdProvider;
     if (provider != null) {
-      return await provider();
+      final id = await provider();
+      if (id.isNotEmpty && id != 'default_user' && id != 'demo_user' && id != 'demo') {
+        return id;
+      }
     }
-    return 'default_user';
+    throw StateError('NO_AUTHENTICATED_USER: Sesi pengguna tidak ditemukan.');
   }
 
-  /// Mengambil daftar model yang didukung Gemini API — Fase R3 (hanya dipanggil saat 404 di debug mode).
+  /// Mengambil daftar model yang didukung Gemini API — Fase R3 & S1.
   Future<List<String>> listAvailableModels({required String apiKey}) async {
     final listModelsUri =
         Uri.parse('https://generativelanguage.googleapis.com/v1beta/models');
@@ -76,27 +91,27 @@ class GeminiChatRepository implements ChatRepository {
   }
 
   @override
-  Future<String> sendMessage(String message, List<ChatMessage> history) async {
+  Future<String> sendMessage(
+    String message,
+    List<ChatMessage> history, {
+    void Function(String status)? onStatusUpdate,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final key = (apiKey ?? Env.geminiApiKey).trim();
     if (key.isEmpty) {
       throw GeminiChatException(
         'Kunci ditolak, periksa GEMINI_API_KEY. Konfigurasi AI belum benar.',
+        statusCode: 401,
+        modelName: activeModel,
       );
     }
 
-    // 1. Pakai Env.geminiModel apa adanya. Default tetap 'gemini-3.5-flash-lite' — Fase R3 & R4
-    final modelCandidate = (model != null && model!.trim().isNotEmpty)
-        ? model!.trim()
-        : Env.geminiModel.trim();
-    final activeModel =
-        modelCandidate.isNotEmpty ? modelCandidate : 'gemini-3.5-flash-lite';
-
-    // 2. Kunci dikirim via header x-goog-api-key (BUKAN query string di URL) — Fase R3
+    final targetModel = activeModel;
     final endpoint = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$activeModel:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/$targetModel:generateContent',
     );
 
-    // 5. Pertahankan batas maksimal 10 pesan riwayat terakhir sebagai konteks percakapan — PRD §9.3
+    // Batasi maksimal 10 riwayat pesan terakhir sebagai konteks percakapan — PRD §9.3
     final recentHistory =
         history.length > 10 ? history.sublist(history.length - 10) : history;
 
@@ -122,7 +137,6 @@ class GeminiChatRepository implements ChatRepository {
       });
     }
 
-    // 5. Pertahankan systemInstruction asisten buku — PRD §9.3
     final requestBody = {
       'systemInstruction': {
         'parts': [
@@ -146,7 +160,9 @@ class GeminiChatRepository implements ChatRepository {
             },
             body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(timeout);
+
+      final retryAfter = parseRetryAfter(response.headers['retry-after']);
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -166,7 +182,7 @@ class GeminiChatRepository implements ChatRepository {
 
         final firstCandidate = candidates[0] as Map<String, dynamic>;
         final finishReason = firstCandidate['finishReason'] as String?;
-        // Respons diblokir (finishReason SAFETY) -> tampilkan pesan ramah — Fase R3
+        // Respons diblokir (finishReason SAFETY) -> tampilkan pesan ramah
         if (finishReason != null && finishReason.toUpperCase() == 'SAFETY') {
           return 'Maaf, respons tidak dapat ditampilkan karena terdeteksi mengandung konten sensitif. Silakan tanyakan hal lain seputar buku.';
         }
@@ -177,69 +193,88 @@ class GeminiChatRepository implements ChatRepository {
           return 'Aku belum bisa menjawab itu, coba pertanyaan lain.';
         }
 
-        final reply = parts[0]['text'] as String?;
-        if (reply == null || reply.trim().isEmpty) {
-          return 'Aku belum bisa menjawab itu, coba pertanyaan lain.';
+        // Tahan banting: rangkai seluruh parts teks jika finishReason MAX_TOKENS atau chunk terpisah
+        final textBuffer = StringBuffer();
+        for (final p in parts) {
+          if (p is Map && p['text'] != null) {
+            textBuffer.write(p['text'].toString());
+          }
+        }
+        final reply = textBuffer.toString().trim();
+        if (reply.isNotEmpty) {
+          return reply;
         }
 
-        return reply.trim();
+        return 'Aku belum bisa menjawab itu, coba pertanyaan lain.';
       }
 
-      // 3 & 4. Pemetaan error kode status HTTP — Fase R3
+      // Pemetaan error kode status HTTP
       if (response.statusCode == 400) {
         throw GeminiChatException(
           'Permintaan atau format kunci tidak valid. Konfigurasi AI belum benar.',
           statusCode: 400,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         throw GeminiChatException(
           'Kunci ditolak, periksa GEMINI_API_KEY. Konfigurasi AI belum benar.',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       } else if (response.statusCode == 404) {
-        // Catat model yang tidak ditemukan di debug log tanpa network call tambahan — Fase R3+
         if (kDebugMode) {
           debugPrint(
-              '[Gemini] Model "$activeModel" tidak ditemukan (HTTP 404). '
-              'Periksa GEMINI_MODEL di .env. '
-              'Model yang direkomendasikan: gemini-2.0-flash-lite, gemini-1.5-flash');
+            '[Gemini] Model "$targetModel" tidak ditemukan (HTTP 404). '
+            'Periksa GEMINI_MODEL atau GEMINI_MODEL_FALLBACKS di .env.',
+          );
         }
         throw GeminiChatException(
           'Model tidak tersedia, periksa GEMINI_MODEL di pengaturan.',
           statusCode: 404,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       } else if (response.statusCode == 429) {
         throw GeminiChatException(
           'Kuota habis, coba lagi nanti. Terlalu banyak permintaan, coba lagi sebentar.',
           statusCode: 429,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       } else if (response.statusCode >= 500 && response.statusCode < 600) {
         throw GeminiChatException(
           'Server AI sedang sibuk (${response.statusCode}), silakan coba lagi nanti.',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       } else {
         throw GeminiChatException(
           'Terjadi kesalahan pada layanan AI (${response.statusCode}).',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
+          modelName: targetModel,
         );
       }
     } on TimeoutException {
       throw GeminiChatException(
         'Koneksi ke asisten AI timeout. Periksa jaringan Anda.',
+        isTimeout: true,
+        modelName: targetModel,
       );
-    } on SocketException {
+    } on SocketException catch (e) {
       throw GeminiChatException(
-        'Tidak ada koneksi internet. Periksa jaringan Anda.',
+        'Tidak ada koneksi internet. Periksa jaringan Anda: ${e.message}',
+        isSocket: true,
+        modelName: targetModel,
       );
-    } on GeminiChatException {
-      rethrow;
     } catch (e) {
-      if (e is GeminiChatException) {
-        rethrow;
-      }
+      if (e is GeminiChatException) rethrow;
       throw GeminiChatException(
-        'Tidak ada koneksi internet. Periksa jaringan Anda.',
+        'Tidak ada koneksi internet. Periksa jaringan Anda: $e',
+        modelName: targetModel,
       );
     }
   }

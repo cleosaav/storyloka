@@ -14,6 +14,128 @@ class LocationService {
   LocationService._();
   static final LocationService instance = LocationService._();
 
+  /// Meminta izin lokasi dan mengembalikan koordinat GPS pengguna saat ini.
+  /// Menangani status GPS mati, izin ditolak, dan ditolak permanen.
+  Future<Position?> getUserLocation(BuildContext context) async {
+    bool serviceEnabled;
+    try {
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    } catch (_) {
+      serviceEnabled = false;
+    }
+
+    if (!serviceEnabled) {
+      if (context.mounted) {
+        AppSnackBar.show(
+          context,
+          message: 'Layanan lokasi (GPS) sedang dinonaktifkan.',
+          type: SnackBarType.warning,
+        );
+      }
+      return null;
+    }
+
+    LocationPermission permission;
+    try {
+      permission = await Geolocator.checkPermission();
+    } catch (_) {
+      permission = LocationPermission.denied;
+    }
+
+    if (permission == LocationPermission.denied) {
+      if (context.mounted) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('Izin Lokasi', style: AppText.cardHeading()),
+            content: Text(
+              'Izin lokasi dipakai untuk mencari toko buku di dekatmu.',
+              style: AppText.body(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Batal'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Izinkan'),
+              ),
+            ],
+          ),
+        );
+
+        if (proceed != true) return null;
+      }
+
+      try {
+        permission = await Geolocator.requestPermission();
+      } catch (_) {
+        permission = LocationPermission.denied;
+      }
+
+      if (permission == LocationPermission.denied) {
+        if (context.mounted) {
+          AppSnackBar.show(
+            context,
+            message: 'Izin lokasi tidak diberikan.',
+            type: SnackBarType.warning,
+          );
+        }
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (context.mounted) {
+        final openSettings = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('Izin Lokasi Ditolak Permanen', style: AppText.cardHeading()),
+            content: Text(
+              'Buka pengaturan perangkat untuk mengaktifkan izin lokasi StoryLoka.',
+              style: AppText.body(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Batal'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Buka Pengaturan'),
+              ),
+            ],
+          ),
+        );
+        if (openSettings == true) {
+          await Geolocator.openAppSettings();
+        }
+      }
+      return null;
+    }
+
+    try {
+      // 1. Coba ambil posisi terakhir yang tersimpan di sistem (instan < 50ms)
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        return lastKnown;
+      }
+    } catch (_) {}
+
+    try {
+      // 2. Jika belum ada cache lokasi, minta posisi baru dengan batas waktu wajar
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Membuka peta pencarian toko buku terdekat dengan koordinat GPS pengguna.
   /// Minta izin lokasi dengan penjelasan transparan.
   /// Jika ditolak/mati -> fallback ke bottom sheet input lokasi manual.

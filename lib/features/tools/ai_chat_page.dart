@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -35,6 +36,7 @@ class _AiChatPageState extends State<AiChatPage> {
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isSending = false;
+  String? _statusText;
 
   static const _suggestions = [
     'Rekomendasi novel fantasi',
@@ -71,10 +73,13 @@ class _AiChatPageState extends State<AiChatPage> {
     if (text.isEmpty || _isSending) return;
 
     _inputCtrl.clear();
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _statusText = null;
+    });
 
     final auth = context.read<AuthController>();
-    final userId = auth.currentUser?.id ?? 'demo';
+    final userId = auth.currentUser?.id ?? 'guest';
     final repo = context.read<ChatRepository>();
 
     final userMsg = ChatMessage(
@@ -85,13 +90,24 @@ class _AiChatPageState extends State<AiChatPage> {
       createdAt: DateTime.now(),
     );
 
-    await repo.saveMessage(userMsg);
+    // Tampilkan di UI sementara agar pengguna melihat pertanyaannya
     setState(() => _messages = [..._messages, userMsg]);
     _scrollToBottom();
 
     try {
       final history = _messages.length > 10 ? _messages.sublist(_messages.length - 10) : _messages;
-      final reply = await repo.sendMessage(text, history);
+      final reply = await repo.sendMessage(
+        text,
+        history,
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() => _statusText = status);
+          }
+        },
+      );
+
+      // Hanya simpan user message dan model reply ke database jika berhasil — Fase S1
+      await repo.saveMessage(userMsg);
 
       final assistantMsg = ChatMessage(
         id: _uuid.v4(),
@@ -101,10 +117,12 @@ class _AiChatPageState extends State<AiChatPage> {
         createdAt: DateTime.now(),
       );
       await repo.saveMessage(assistantMsg);
+
       if (mounted) {
         setState(() {
           _messages = [..._messages, assistantMsg];
           _isSending = false;
+          _statusText = null;
         });
         _scrollToBottom();
       }
@@ -112,11 +130,35 @@ class _AiChatPageState extends State<AiChatPage> {
       if (mounted) {
         setState(() {
           _isSending = false;
+          _statusText = null;
+          // Teks input tidak boleh hilang agar pengguna tidak perlu mengetik ulang
           _inputCtrl.text = text;
+          // Pesan gagal tidak masuk ke riwayat konteks percakapan
           _messages = _messages.where((m) => m.id != userMsg.id).toList();
         });
-        final rawErr = e.toString().replaceFirst('Exception: ', '');
-        final errorMsg = rawErr.isNotEmpty ? rawErr : 'Gagal terhubung ke AI. Coba lagi.';
+
+        final rawErr = e.toString().replaceFirst('Exception: ', '').trim();
+        final lower = rawErr.toLowerCase();
+
+        String errorMsg;
+        if (lower.contains('tidak ada koneksi internet') ||
+            lower.contains('socketexception') ||
+            lower.contains('failed host lookup') ||
+            lower.contains('network is unreachable')) {
+          errorMsg = 'Tidak ada koneksi internet. Periksa jaringan Anda dan coba lagi.';
+        } else if (lower.contains('konfigurasi ai belum benar') ||
+            lower.contains('kunci ditolak') ||
+            lower.contains('kunci deepseek tidak ditemukan')) {
+          errorMsg = 'Konfigurasi AI belum benar. Periksa API key di pengaturan.';
+        } else if (lower.contains('layanan ai sedang ramai') ||
+            lower.contains('kuota') ||
+            lower.contains('sibuk') ||
+            lower.contains('timeout')) {
+          errorMsg = 'Layanan AI sedang ramai, coba lagi sebentar.';
+        } else {
+          errorMsg = rawErr.isNotEmpty ? rawErr : 'Gagal terhubung ke AI. Coba lagi.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
@@ -182,8 +224,8 @@ class _AiChatPageState extends State<AiChatPage> {
       ),
       body: Column(
         children: [
-          // Demo banner (hanya tampil jika useFakeData)
-          if (AppConfig.useFakeData)
+          // Demo banner (hanya tampil jika kDebugMode && useFakeData)
+          if (kDebugMode && AppConfig.useFakeData)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
@@ -216,7 +258,10 @@ class _AiChatPageState extends State<AiChatPage> {
                         itemCount: _messages.length + (_isSending ? 1 : 0),
                         itemBuilder: (ctx, i) {
                           if (i == _messages.length) {
-                            return _TypingIndicator(isDark: isDark);
+                            return _TypingIndicator(
+                              isDark: isDark,
+                              statusText: _statusText,
+                            );
                           }
                           return _Bubble(
                             message: _messages[i],
@@ -324,45 +369,64 @@ class _Bubble extends StatelessWidget {
 
 class _TypingIndicator extends StatelessWidget {
   final bool isDark;
-  const _TypingIndicator({required this.isDark});
+  final String? statusText;
+
+  const _TypingIndicator({
+    required this.isDark,
+    this.statusText,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: isDark ? AppColors.surfaceDark : AppColors.palePeach,
-          child: Icon(
-            Icons.auto_awesome_rounded,
-            size: 16,
-            color: isDark ? AppColors.softApricot : AppColors.deepTeal,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.s),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.m),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.surfaceDark : AppColors.palePeach,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(18),
-              topRight: Radius.circular(18),
-              bottomRight: Radius.circular(18),
-              bottomLeft: Radius.circular(4),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.m),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: isDark ? AppColors.surfaceDark : AppColors.palePeach,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              size: 16,
+              color: isDark ? AppColors.softApricot : AppColors.deepTeal,
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _Dot(delay: 0),
-              const SizedBox(width: 4),
-              _Dot(delay: 150),
-              const SizedBox(width: 4),
-              _Dot(delay: 300),
-            ],
+          const SizedBox(width: AppSpacing.s),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.m),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.surfaceDark : AppColors.palePeach,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+                bottomLeft: Radius.circular(4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Dot(delay: 0),
+                const SizedBox(width: 4),
+                _Dot(delay: 150),
+                const SizedBox(width: 4),
+                _Dot(delay: 300),
+                if (statusText != null && statusText!.isNotEmpty) ...[
+                  const SizedBox(width: AppSpacing.s),
+                  Text(
+                    statusText!,
+                    style: AppText.caption(
+                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

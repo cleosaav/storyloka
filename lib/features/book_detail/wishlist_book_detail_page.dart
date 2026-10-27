@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../core/services/location_service.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -12,9 +11,11 @@ import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../data/models/user_book.dart';
+import '../../data/repositories/book_search_repository.dart';
 import '../../data/repositories/library_repository.dart';
+import 'widgets/mini_bookstore_map.dart';
 
-/// Halaman Detail Buku Wishlist — PRD §7.6.
+/// Halaman Detail Buku Wishlist — PRD §7.6 & Fase S3.
 /// Menampilkan detail buku wishlist dengan satu tombol utama "Add to Collection"
 /// yang memindahkan buku dari wishlist ke koleksi lalu kembali dengan konfirmasi.
 class WishlistBookDetailPage extends StatefulWidget {
@@ -32,6 +33,7 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
   String? _errorMessage;
   bool _isMoving = false;
   bool _isSynopsisExpanded = false;
+  bool _isEnriching = false;
 
   @override
   void initState() {
@@ -60,6 +62,7 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
           _book = book;
           _isLoading = false;
         });
+        _enrichIfNeeded(book);
       }
     } catch (e) {
       if (!mounted) return;
@@ -68,6 +71,95 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
         _errorMessage = 'Gagal memuat detail buku. Periksa koneksi Anda.';
       });
     }
+  }
+
+  Future<void> _enrichIfNeeded(UserBook book) async {
+    if (_isEnriching) return;
+    final needsSynopsis =
+        book.synopsis == null || book.synopsis!.trim().isEmpty;
+    final needsPages = book.pageCount == null || book.pageCount! <= 0;
+    final needsPrice = book.priceAmount == null;
+
+    if (!needsSynopsis && !needsPages && !needsPrice) return;
+    if (book.googleBooksId.isEmpty) return;
+
+    _isEnriching = true;
+    if (mounted) setState(() {});
+    try {
+      final searchRepo = context.read<BookSearchRepository>();
+      final detail = await searchRepo.getDetail(book.googleBooksId);
+      if (!mounted || detail == null) return;
+
+      bool hasNewData = false;
+      int? newPageCount = book.pageCount;
+      String? newSynopsis = book.synopsis;
+      double? newPriceAmount = book.priceAmount;
+      String? newPriceCurrency = book.priceCurrency;
+      String? newGenre = book.genre;
+
+      if (needsPages && detail.pageCount != null && detail.pageCount! > 0) {
+        newPageCount = detail.pageCount;
+        hasNewData = true;
+      }
+      if (needsSynopsis &&
+          detail.synopsis != null &&
+          detail.synopsis!.trim().isNotEmpty) {
+        newSynopsis = detail.synopsis;
+        hasNewData = true;
+      }
+      if (needsPrice && detail.priceAmount != null) {
+        newPriceAmount = detail.priceAmount;
+        newPriceCurrency = detail.priceCurrency;
+        hasNewData = true;
+      }
+      if ((book.genre == null || book.genre!.isEmpty) &&
+          detail.genre != null &&
+          detail.genre!.isNotEmpty) {
+        newGenre = detail.genre;
+        hasNewData = true;
+      }
+
+      if (hasNewData && mounted) {
+        final library = context.read<LibraryRepository>();
+        final updated = book.copyWith(
+          pageCount: newPageCount,
+          synopsis: newSynopsis,
+          priceAmount: newPriceAmount,
+          priceCurrency: newPriceCurrency,
+          genre: newGenre,
+          updatedAt: DateTime.now(),
+          syncStatus: 'pending',
+        );
+        await library.updateBook(updated);
+        if (mounted) {
+          setState(() {
+            _book = updated;
+          });
+        }
+      }
+    } catch (_) {
+      // Background enrichment gagal, abaikan
+    } finally {
+      _isEnriching = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  String _cleanSynopsis(String? text) {
+    if (text == null || text.trim().isEmpty) {
+      return 'Sinopsis tidak tersedia';
+    }
+    final noHtml = text
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+    return noHtml.isEmpty ? 'Sinopsis tidak tersedia' : noHtml;
   }
 
   Future<void> _moveToCollection() async {
@@ -124,16 +216,12 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
     }
   }
 
-  Future<void> _openMaps([String? query]) async {
-    if (query != null && query.trim().isNotEmpty && query != 'toko buku terdekat') {
-      await LocationService.instance.openMapsWithQuery(context, query);
-    } else {
-      await LocationService.instance.openNearbyBookstores(context);
-    }
+  void _openMaps() {
+    context.push('/maps/bookstores');
   }
 
   void _showManualLocationSheet() {
-    LocationService.instance.showManualLocationSheet(context);
+    context.push('/maps/bookstores');
   }
 
   @override
@@ -204,9 +292,7 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
     }
 
     final book = _book!;
-    final synopsis = (book.synopsis != null && book.synopsis!.trim().isNotEmpty)
-        ? book.synopsis!.trim()
-        : 'Sinopsis tidak tersedia';
+    final synopsis = _cleanSynopsis(book.synopsis);
 
     return RefreshIndicator(
       onRefresh: _loadBook,
@@ -217,7 +303,7 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
           vertical: AppSpacing.m,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Cover Buku
             Center(
@@ -286,37 +372,78 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Synopsis',
-                    style: AppText.sectionHeading(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Synopsis',
+                        style: AppText.sectionHeading(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
+                      ),
+                      if (_isEnriching)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.s),
-                  Text(
-                    synopsis,
-                    maxLines: _isSynopsisExpanded ? null : 6,
-                    overflow: _isSynopsisExpanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                    style: AppText.body(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
-                  ),
-                  if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
-                    const SizedBox(height: AppSpacing.xs),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TertiaryButton(
-                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                        onPressed: () {
-                          setState(() {
-                            _isSynopsisExpanded = !_isSynopsisExpanded;
-                          });
-                        },
+                  if (_isEnriching && (synopsis == 'Sinopsis tidak tersedia' || synopsis.isEmpty)) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity * 0.75,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      synopsis,
+                      maxLines: _isSynopsisExpanded ? null : 6,
+                      overflow: _isSynopsisExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: synopsis == 'Sinopsis tidak tersedia'
+                          ? AppText.body(
+                              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                            ).copyWith(fontStyle: FontStyle.italic)
+                          : AppText.body(
+                              color: isDark ? AppColors.inkDark : AppColors.ink,
+                            ).copyWith(height: 1.6),
+                    ),
+                    if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TertiaryButton(
+                          label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                          color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                          trailingIcon: _isSynopsisExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.s,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isSynopsisExpanded = !_isSynopsisExpanded;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -394,6 +521,11 @@ class _WishlistBookDetailPageState extends State<WishlistBookDetailPage> {
                     style: AppText.body(
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),
+                  ),
+                  const SizedBox(height: AppSpacing.m),
+                  // Pratinjau kotak peta mini toko buku terdekat
+                  MiniBookstoreMap(
+                    onOpenFullMap: _openMaps,
                   ),
                   const SizedBox(height: AppSpacing.m),
                   Row(

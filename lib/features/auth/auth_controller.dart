@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../app/providers.dart';
+import '../../core/services/ledger_service.dart';
 import '../../core/services/secure_session_store.dart';
 import '../../core/services/sync_service.dart';
 import '../../core/widgets/demo_widgets.dart';
@@ -14,6 +15,7 @@ class AuthController extends ChangeNotifier {
   final AuthRepository authRepository;
   final SecureSessionStore sessionStore;
   final DemoControls demoControls;
+  final LedgerService? ledgerService;
 
   AppUser? _currentUser;
   bool _isLoading = false;
@@ -26,6 +28,7 @@ class AuthController extends ChangeNotifier {
     required this.authRepository,
     required this.sessionStore,
     required this.demoControls,
+    this.ledgerService,
   });
 
   AppUser? get currentUser => _currentUser;
@@ -83,6 +86,10 @@ class AuthController extends ChangeNotifier {
         } else {
           _isBiometricLocked = false;
         }
+        // PRD §10.2: Genesis block dibuat saat sesi tervalidasi jika belum ada
+        try {
+          await ledgerService?.ensureGenesisBlock(user.id);
+        } catch (_) {}
       } else {
         _currentUser = null;
         _isBiometricLocked = false;
@@ -132,6 +139,11 @@ class AuthController extends ChangeNotifier {
       _isBiometricLocked = false;
       _errorMessage = null;
 
+      // PRD §10.2: Genesis block dibuat saat login jika belum ada
+      try {
+        await ledgerService?.ensureGenesisBlock(user.id);
+      } catch (_) {}
+
       // PRD §8.3: Pull data setelah login berhasil
       SyncService.instance.pullAll(user.id);
 
@@ -179,6 +191,11 @@ class AuthController extends ChangeNotifier {
       _currentUser = user;
       _isBiometricLocked = false;
       _errorMessage = null;
+
+      // PRD §10.2: Genesis block dibuat saat register jika belum ada
+      try {
+        await ledgerService?.ensureGenesisBlock(user.id);
+      } catch (_) {}
 
       // PRD §8.3: Pull data setelah register berhasil
       SyncService.instance.pullAll(user.id);

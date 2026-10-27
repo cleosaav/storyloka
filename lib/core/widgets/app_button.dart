@@ -160,6 +160,7 @@ class TertiaryButton extends StatelessWidget {
   final IconData? icon;
   final IconData? trailingIcon;
   final Color? color;
+  final EdgeInsetsGeometry? padding;
 
   const TertiaryButton({
     super.key,
@@ -168,6 +169,7 @@ class TertiaryButton extends StatelessWidget {
     this.icon,
     this.trailingIcon,
     this.color,
+    this.padding,
   });
 
   @override
@@ -181,10 +183,11 @@ class TertiaryButton extends StatelessWidget {
         onPressed: onPressed,
         style: TextButton.styleFrom(
           foregroundColor: textColor,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.m,
-            vertical: AppSpacing.s,
-          ),
+          padding: padding ??
+              const EdgeInsets.symmetric(
+                horizontal: AppSpacing.m,
+                vertical: AppSpacing.s,
+              ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

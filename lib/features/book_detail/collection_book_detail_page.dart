@@ -13,9 +13,10 @@ import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/book_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
 import '../../data/models/user_book.dart';
+import '../../data/repositories/book_search_repository.dart';
 import '../../data/repositories/library_repository.dart';
 
-/// Halaman Detail Buku Collection — PRD §7.4.
+/// Halaman Detail Buku Collection — PRD §7.4 & Fase S3.
 class CollectionBookDetailPage extends StatefulWidget {
   final String id;
 
@@ -33,6 +34,7 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
   late TextEditingController _reviewController;
   int _selectedRating = 0;
   bool _isSavingReview = false;
+  bool _isEnriching = false;
 
   @override
   void initState() {
@@ -70,6 +72,7 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
           _book = book;
           _isLoading = false;
         });
+        _enrichIfNeeded(book);
       }
     } catch (e) {
       if (!mounted) return;
@@ -78,6 +81,95 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
         _errorMessage = 'Gagal memuat detail buku.';
       });
     }
+  }
+
+  Future<void> _enrichIfNeeded(UserBook book) async {
+    if (_isEnriching) return;
+    final needsSynopsis =
+        book.synopsis == null || book.synopsis!.trim().isEmpty;
+    final needsPages = book.pageCount == null || book.pageCount! <= 0;
+    final needsPrice = book.priceAmount == null;
+
+    if (!needsSynopsis && !needsPages && !needsPrice) return;
+    if (book.googleBooksId.isEmpty) return;
+
+    _isEnriching = true;
+    if (mounted) setState(() {});
+    try {
+      final searchRepo = context.read<BookSearchRepository>();
+      final detail = await searchRepo.getDetail(book.googleBooksId);
+      if (!mounted || detail == null) return;
+
+      bool hasNewData = false;
+      int? newPageCount = book.pageCount;
+      String? newSynopsis = book.synopsis;
+      double? newPriceAmount = book.priceAmount;
+      String? newPriceCurrency = book.priceCurrency;
+      String? newGenre = book.genre;
+
+      if (needsPages && detail.pageCount != null && detail.pageCount! > 0) {
+        newPageCount = detail.pageCount;
+        hasNewData = true;
+      }
+      if (needsSynopsis &&
+          detail.synopsis != null &&
+          detail.synopsis!.trim().isNotEmpty) {
+        newSynopsis = detail.synopsis;
+        hasNewData = true;
+      }
+      if (needsPrice && detail.priceAmount != null) {
+        newPriceAmount = detail.priceAmount;
+        newPriceCurrency = detail.priceCurrency;
+        hasNewData = true;
+      }
+      if ((book.genre == null || book.genre!.isEmpty) &&
+          detail.genre != null &&
+          detail.genre!.isNotEmpty) {
+        newGenre = detail.genre;
+        hasNewData = true;
+      }
+
+      if (hasNewData && mounted) {
+        final library = context.read<LibraryRepository>();
+        final updated = book.copyWith(
+          pageCount: newPageCount,
+          synopsis: newSynopsis,
+          priceAmount: newPriceAmount,
+          priceCurrency: newPriceCurrency,
+          genre: newGenre,
+          updatedAt: DateTime.now(),
+          syncStatus: 'pending',
+        );
+        await library.updateBook(updated);
+        if (mounted) {
+          setState(() {
+            _book = updated;
+          });
+        }
+      }
+    } catch (_) {
+      // Background enrichment gagal, abaikan
+    } finally {
+      _isEnriching = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  String _cleanSynopsis(String? text) {
+    if (text == null || text.trim().isEmpty) {
+      return 'Sinopsis tidak tersedia';
+    }
+    final noHtml = text
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+    return noHtml.isEmpty ? 'Sinopsis tidak tersedia' : noHtml;
   }
 
   Future<void> _confirmRemove() async {
@@ -193,9 +285,7 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
     }
 
     final book = _book!;
-    final synopsis = (book.synopsis != null && book.synopsis!.trim().isNotEmpty)
-        ? book.synopsis!.trim()
-        : 'Sinopsis tidak tersedia';
+    final synopsis = _cleanSynopsis(book.synopsis);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final useColumnLayout = screenWidth < 340 || textScale > 1.15;
@@ -370,37 +460,78 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Synopsis',
-                    style: AppText.sectionHeading(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Synopsis',
+                        style: AppText.sectionHeading(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
+                      ),
+                      if (_isEnriching)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.s),
-                  Text(
-                    synopsis,
-                    maxLines: _isSynopsisExpanded ? null : 6,
-                    overflow: _isSynopsisExpanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                    style: AppText.body(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
-                  ),
-                  if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
-                    const SizedBox(height: AppSpacing.xs),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TertiaryButton(
-                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                        onPressed: () {
-                          setState(() {
-                            _isSynopsisExpanded = !_isSynopsisExpanded;
-                          });
-                        },
+                  if (_isEnriching && (synopsis == 'Sinopsis tidak tersedia' || synopsis.isEmpty)) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity * 0.75,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      synopsis,
+                      maxLines: _isSynopsisExpanded ? null : 6,
+                      overflow: _isSynopsisExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: synopsis == 'Sinopsis tidak tersedia'
+                          ? AppText.body(
+                              color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                            ).copyWith(fontStyle: FontStyle.italic)
+                          : AppText.body(
+                              color: isDark ? AppColors.inkDark : AppColors.ink,
+                            ).copyWith(height: 1.6),
+                    ),
+                    if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TertiaryButton(
+                          label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                          color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                          trailingIcon: _isSynopsisExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.s,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isSynopsisExpanded = !_isSynopsisExpanded;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),

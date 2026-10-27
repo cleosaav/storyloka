@@ -89,7 +89,7 @@ void main() {
       expect(libRepo, isA<LocalLibraryRepository>());
       expect(readRepo, isA<LocalReadingRepository>());
       expect(ledgerRepo, isA<LocalLedgerRepository>());
-      expect(feedbackRepo, isA<LocalFeedbackRepository>());
+      expect(feedbackRepo, isA<TeamFeedbackRepository>());
       expect(scoreRepo, isA<LocalScoreRepository>());
     });
 

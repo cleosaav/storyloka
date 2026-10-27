@@ -10,24 +10,20 @@ import '../../../core/config/env.dart';
 import '../../database_helper.dart';
 import '../../models/chat_message.dart';
 import '../chat_repository.dart';
+import 'ai_chat_exception.dart';
 
-/// Exception khusus untuk kesalahan layanan DeepSeek AI — Fase R4.
-class DeepSeekChatException implements Exception {
-  final String message;
-  final int? statusCode;
-
-  DeepSeekChatException(this.message, {this.statusCode});
-
-  @override
-  String toString() => message;
+/// Exception khusus untuk kesalahan layanan DeepSeek AI — Fase R4 & S1.
+class DeepSeekChatException extends AiChatException {
+  DeepSeekChatException(
+    super.message, {
+    super.statusCode,
+    super.retryAfter,
+    super.isTimeout = false,
+    super.isSocket = false,
+  }) : super(providerName: 'DeepSeek');
 }
 
-/// Implementasi ChatRepository menggunakan DeepSeek REST API (OpenAI-compatible) — Fase R4.
-///
-/// DeepSeek menggunakan format OpenAI chat completions:
-/// POST https://api.deepseek.com/chat/completions
-/// Header: `Authorization: Bearer key`
-/// Model utama: deepseek-chat
+/// Implementasi ChatRepository menggunakan DeepSeek REST API (OpenAI-compatible) — Fase R4 & S1.
 class DeepSeekChatRepository implements ChatRepository {
   final http.Client _client;
   final DatabaseHelper _dbHelper;
@@ -53,18 +49,32 @@ class DeepSeekChatRepository implements ChatRepository {
   })  : _client = client ?? http.Client(),
         _dbHelper = dbHelper ?? DatabaseHelper.instance;
 
+  String get id => 'deepseek';
+  String get displayName => 'DeepSeek ($_deepSeekModel)';
+
   Future<String> _getUserId() async {
     final provider = userIdProvider;
-    if (provider != null) return await provider();
-    return 'default_user';
+    if (provider != null) {
+      final id = await provider();
+      if (id.isNotEmpty && id != 'default_user' && id != 'demo_user' && id != 'demo') {
+        return id;
+      }
+    }
+    throw StateError('NO_AUTHENTICATED_USER: Sesi pengguna tidak ditemukan.');
   }
 
   @override
-  Future<String> sendMessage(String message, List<ChatMessage> history) async {
+  Future<String> sendMessage(
+    String message,
+    List<ChatMessage> history, {
+    void Function(String status)? onStatusUpdate,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final key = (apiKey ?? Env.deepseekApiKey).trim();
     if (key.isEmpty) {
       throw DeepSeekChatException(
         'Kunci DeepSeek tidak ditemukan, periksa DEEPSEEK_API_KEY.',
+        statusCode: 401,
       );
     }
 
@@ -109,7 +119,9 @@ class DeepSeekChatRepository implements ChatRepository {
             },
             body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(timeout);
+
+      final retryAfter = parseRetryAfter(response.headers['retry-after']);
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -127,22 +139,27 @@ class DeepSeekChatRepository implements ChatRepository {
 
         final msgObj = firstChoice['message'] as Map<String, dynamic>?;
         final reply = msgObj?['content'] as String?;
-        if (reply == null || reply.trim().isEmpty) {
-          return 'Aku belum bisa menjawab itu, coba pertanyaan lain.';
+
+        // Tahan banting: finishReason == length / MAX_TOKENS tetap mengembalikan teks jika ada
+        if (reply != null && reply.trim().isNotEmpty) {
+          return reply.trim();
         }
-        return reply.trim();
+
+        return 'Aku belum bisa menjawab itu, coba pertanyaan lain.';
       }
 
-      // Pemetaan error HTTP — konsisten dengan GeminiChatRepository
+      // Pemetaan error HTTP
       if (response.statusCode == 400) {
         throw DeepSeekChatException(
           'Permintaan tidak valid ke DeepSeek. Konfigurasi AI belum benar.',
           statusCode: 400,
+          retryAfter: retryAfter,
         );
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         throw DeepSeekChatException(
           'Kunci DeepSeek ditolak, periksa DEEPSEEK_API_KEY.',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
         );
       } else if (response.statusCode == 404) {
         if (kDebugMode) {
@@ -152,42 +169,47 @@ class DeepSeekChatRepository implements ChatRepository {
         throw DeepSeekChatException(
           'Layanan DeepSeek tidak ditemukan, coba lagi nanti.',
           statusCode: 404,
+          retryAfter: retryAfter,
         );
       } else if (response.statusCode == 402) {
         throw DeepSeekChatException(
           'Saldo akun DeepSeek habis (Insufficient Balance).',
           statusCode: 402,
+          retryAfter: retryAfter,
         );
       } else if (response.statusCode == 429) {
         throw DeepSeekChatException(
           'Kuota DeepSeek habis, coba lagi nanti.',
           statusCode: 429,
+          retryAfter: retryAfter,
         );
       } else if (response.statusCode >= 500 && response.statusCode < 600) {
         throw DeepSeekChatException(
           'Server DeepSeek sedang sibuk (${response.statusCode}), silakan coba lagi nanti.',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
         );
       } else {
         throw DeepSeekChatException(
           'Terjadi kesalahan pada layanan DeepSeek (${response.statusCode}).',
           statusCode: response.statusCode,
+          retryAfter: retryAfter,
         );
       }
     } on TimeoutException {
       throw DeepSeekChatException(
         'Koneksi ke DeepSeek timeout. Periksa jaringan Anda.',
+        isTimeout: true,
       );
-    } on SocketException {
+    } on SocketException catch (e) {
       throw DeepSeekChatException(
-        'Tidak ada koneksi internet. Periksa jaringan Anda.',
+        'Gagal menghubungi server DeepSeek: ${e.message}',
+        isSocket: true,
       );
-    } on DeepSeekChatException {
-      rethrow;
     } catch (e) {
       if (e is DeepSeekChatException) rethrow;
       throw DeepSeekChatException(
-        'Tidak ada koneksi internet. Periksa jaringan Anda.',
+        'Terjadi kesalahan saat memproses jawaban DeepSeek: $e',
       );
     }
   }
@@ -196,12 +218,14 @@ class DeepSeekChatRepository implements ChatRepository {
   Future<List<ChatMessage>> getHistory() async {
     final db = await _dbHelper.database;
     final userId = await _getUserId();
+
     final maps = await db.query(
       'chat_messages',
       where: 'user_id = ?',
       whereArgs: [userId],
       orderBy: 'created_at ASC',
     );
+
     return maps.map((m) => ChatMessage.fromMap(m)).toList();
   }
 
@@ -209,6 +233,7 @@ class DeepSeekChatRepository implements ChatRepository {
   Future<void> saveMessage(ChatMessage message) async {
     final db = await _dbHelper.database;
     final userId = await _getUserId();
+
     final messageToSave = message.userId.isEmpty || message.userId == 'demo'
         ? ChatMessage(
             id: message.id.isEmpty ? _uuid.v4() : message.id,
@@ -218,6 +243,7 @@ class DeepSeekChatRepository implements ChatRepository {
             createdAt: message.createdAt,
           )
         : message;
+
     await db.insert('chat_messages', messageToSave.toMap());
   }
 
@@ -225,6 +251,7 @@ class DeepSeekChatRepository implements ChatRepository {
   Future<void> clearHistory() async {
     final db = await _dbHelper.database;
     final userId = await _getUserId();
+
     await db.delete(
       'chat_messages',
       where: 'user_id = ?',

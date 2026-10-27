@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../core/services/location_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -10,8 +11,10 @@ import '../../core/widgets/widgets.dart';
 import '../../data/models/user_book.dart';
 import '../../data/repositories/book_search_repository.dart';
 import '../../data/repositories/library_repository.dart';
+import '../auth/auth_controller.dart';
+import 'widgets/mini_bookstore_map.dart';
 
-/// Halaman Detail Buku hasil pencarian — PRD §7.3.
+/// Halaman Detail Buku hasil pencarian — PRD §7.3 & Fase S3.
 class SearchBookDetailPage extends StatefulWidget {
   final BookSearchResult book;
 
@@ -25,6 +28,8 @@ class SearchBookDetailPage extends StatefulWidget {
 }
 
 class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
+  late BookSearchResult _book;
+  bool _isLoadingDetail = true;
   bool _isCheckingStatus = true;
   bool _isAddingCollection = false;
   bool _isAddingWishlist = false;
@@ -38,7 +43,30 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   @override
   void initState() {
     super.initState();
+    _book = widget.book;
     _checkExistingStatus();
+    _fetchDetail();
+  }
+
+  Future<void> _fetchDetail() async {
+    try {
+      final searchRepo = context.read<BookSearchRepository>();
+      final detail = await searchRepo.getDetail(widget.book.googleBooksId);
+      if (!mounted) return;
+      if (detail != null) {
+        setState(() {
+          _book = _book.mergeWith(detail);
+          _isLoadingDetail = false;
+        });
+      } else {
+        setState(() => _isLoadingDetail = false);
+      }
+    } catch (_) {
+      // Error (timeout / 429) tidak menghapus data yang sudah ada
+      if (mounted) {
+        setState(() => _isLoadingDetail = false);
+      }
+    }
   }
 
   Future<void> _checkExistingStatus() async {
@@ -60,6 +88,20 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   Future<void> _addToCollection() async {
     if (_isInCollection || _isAddingCollection) return;
 
+    AuthController? auth;
+    try {
+      auth = context.read<AuthController>();
+    } catch (_) {}
+    if (auth != null && (auth.currentUser == null || auth.currentUser!.id.isEmpty)) {
+      AppSnackBar.show(
+        context,
+        message: 'Silakan masuk terlebih dahulu untuk menambahkan ke Koleksi.',
+        type: SnackBarType.warning,
+      );
+      return;
+    }
+    final userId = auth?.currentUser?.id ?? '';
+
     setState(() => _isAddingCollection = true);
     final library = context.read<LibraryRepository>();
 
@@ -69,20 +111,21 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
         await library.moveToCollection(_existingBookId!);
       } else {
         final now = DateTime.now();
+        // Simpan data gabungan (detail yang lengkap), bukan data awal yang minim — Fase S3
         final userBook = UserBook(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
-          userId: 'demo_user',
-          googleBooksId: widget.book.googleBooksId,
-          title: widget.book.title,
-          authors: widget.book.authors,
-          genre: widget.book.genre,
-          isbn: widget.book.isbn,
-          publisher: widget.book.publisher,
-          pageCount: widget.book.pageCount,
-          coverUrl: widget.book.coverUrl,
-          synopsis: widget.book.synopsis,
-          priceAmount: widget.book.priceAmount,
-          priceCurrency: widget.book.priceCurrency,
+          userId: userId,
+          googleBooksId: _book.googleBooksId,
+          title: _book.title,
+          authors: _book.authors,
+          genre: _book.genre,
+          isbn: _book.isbn,
+          publisher: _book.publisher,
+          pageCount: _book.pageCount,
+          coverUrl: _book.coverUrl,
+          synopsis: _book.synopsis,
+          priceAmount: _book.priceAmount,
+          priceCurrency: _book.priceCurrency,
           listType: ListType.collection,
           status: BookStatus.notStarted,
           createdAt: now,
@@ -118,25 +161,40 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   Future<void> _addToWishlist() async {
     if (_isInWishlist || _isInCollection || _isAddingWishlist) return;
 
+    AuthController? auth;
+    try {
+      auth = context.read<AuthController>();
+    } catch (_) {}
+    if (auth != null && (auth.currentUser == null || auth.currentUser!.id.isEmpty)) {
+      AppSnackBar.show(
+        context,
+        message: 'Silakan masuk terlebih dahulu untuk menambahkan ke Wishlist.',
+        type: SnackBarType.warning,
+      );
+      return;
+    }
+    final userId = auth?.currentUser?.id ?? '';
+
     setState(() => _isAddingWishlist = true);
     final library = context.read<LibraryRepository>();
 
     try {
       final now = DateTime.now();
+      // Simpan data gabungan (detail yang lengkap), bukan data awal yang minim — Fase S3
       final userBook = UserBook(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
-        userId: 'demo_user',
-        googleBooksId: widget.book.googleBooksId,
-        title: widget.book.title,
-        authors: widget.book.authors,
-        genre: widget.book.genre,
-        isbn: widget.book.isbn,
-        publisher: widget.book.publisher,
-        pageCount: widget.book.pageCount,
-        coverUrl: widget.book.coverUrl,
-        synopsis: widget.book.synopsis,
-        priceAmount: widget.book.priceAmount,
-        priceCurrency: widget.book.priceCurrency,
+        userId: userId,
+        googleBooksId: _book.googleBooksId,
+        title: _book.title,
+        authors: _book.authors,
+        genre: _book.genre,
+        isbn: _book.isbn,
+        publisher: _book.publisher,
+        pageCount: _book.pageCount,
+        coverUrl: _book.coverUrl,
+        synopsis: _book.synopsis,
+        priceAmount: _book.priceAmount,
+        priceCurrency: _book.priceCurrency,
         listType: ListType.wishlist,
         status: BookStatus.notStarted,
         createdAt: now,
@@ -168,16 +226,12 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
     }
   }
 
-  Future<void> _openMaps([String? query]) async {
-    if (query != null && query.trim().isNotEmpty) {
-      await LocationService.instance.openMapsWithQuery(context, query);
-    } else {
-      await LocationService.instance.openNearbyBookstores(context);
-    }
+  void _openMaps() {
+    context.push('/maps/bookstores');
   }
 
   void _showManualLocationSheet() {
-    LocationService.instance.showManualLocationSheet(context);
+    context.push('/maps/bookstores');
   }
 
   String _cleanSynopsis(String? text) {
@@ -188,11 +242,12 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
   }
 
   String _formatPrice() {
-    if (widget.book.priceAmount == null) {
+    final amount = _book.priceAmount;
+    final currency = _book.priceCurrency;
+
+    if (amount == null || currency == null) {
       return 'Harga tidak tersedia';
     }
-    final currency = widget.book.priceCurrency ?? '';
-    final amount = widget.book.priceAmount!;
 
     if (currency.toUpperCase() == 'IDR') {
       final formatter = NumberFormat.currency(
@@ -210,10 +265,56 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
     return '$currency ${amount.toStringAsFixed(2)}';
   }
 
+  String _getPriceUnavailableReason() {
+    if (_book.saleability == 'NOT_FOR_SALE') {
+      return 'Buku ini tidak dijual secara digital di Google Play Books.';
+    }
+    return 'Buku ini belum dijual di Google Play Books untuk wilayah Indonesia.';
+  }
+
+  Future<void> _openGooglePlayBooks() async {
+    final link = _book.buyLink ??
+        _book.infoLink ??
+        'https://play.google.com/store/books/details?id=${_book.googleBooksId}';
+    final uri = Uri.tryParse(link);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            message: 'Tidak dapat membuka Google Play Books.',
+            type: SnackBarType.error,
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _searchOnlineStores() async {
+    final query = '${_book.title} ${_book.isbn ?? ''} beli buku'.trim();
+    final url = 'https://www.google.com/search?q=${Uri.encodeComponent(query)}';
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            message: 'Tidak dapat membuka pencarian web.',
+            type: SnackBarType.error,
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final book = widget.book;
+    final book = _book;
     final synopsis = _cleanSynopsis(book.synopsis);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
@@ -335,37 +436,83 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Synopsis',
-                    style: AppText.sectionHeading(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Synopsis',
+                        style: AppText.sectionHeading(
+                          color: isDark ? AppColors.inkDark : AppColors.ink,
+                        ),
+                      ),
+                      if (_isLoadingDetail)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.s),
-                  Text(
-                    synopsis,
-                    maxLines: _isSynopsisExpanded ? null : 6,
-                    overflow: _isSynopsisExpanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                    style: AppText.body(
-                      color: isDark ? AppColors.inkDark : AppColors.ink,
-                    ),
-                  ),
-                  if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
-                    const SizedBox(height: AppSpacing.xs),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TertiaryButton(
-                        label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
-                        color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                        onPressed: () {
-                          setState(() {
-                            _isSynopsisExpanded = !_isSynopsisExpanded;
-                          });
-                        },
+                  if (_isLoadingDetail && (synopsis == 'Sinopsis tidak tersedia' || synopsis.isEmpty)) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity * 0.75,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      synopsis,
+                      maxLines: _isSynopsisExpanded ? null : 6,
+                      overflow: _isSynopsisExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: AppText.body(
+                        color: isDark ? AppColors.inkDark : AppColors.ink,
+                      ),
+                    ),
+                    if (synopsis != 'Sinopsis tidak tersedia' && synopsis.length > 200) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TertiaryButton(
+                          label: _isSynopsisExpanded ? 'Read Less' : 'Read More',
+                          color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
+                          trailingIcon: _isSynopsisExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.s,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isSynopsisExpanded = !_isSynopsisExpanded;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                    if (_book.synopsisSource == 'Open Library') ...[
+                      const SizedBox(height: AppSpacing.s),
+                      Text(
+                        'Sumber: Open Library',
+                        style: AppText.caption(
+                          color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -374,43 +521,97 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
 
             // Card Book Price
             AppCard(
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: (isDark ? AppColors.softApricot : AppColors.deepTeal)
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
-                    ),
-                    child: Icon(
-                      Icons.sell_rounded,
-                      color: isDark ? AppColors.softApricot : AppColors.deepTeal,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.m),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Book Price',
-                          style: AppText.bodyMedium(
-                            color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                          ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: (isDark ? AppColors.softApricot : AppColors.deepTeal)
+                              .withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _formatPrice(),
-                          style: AppText.sectionHeading(
-                            color: isDark ? AppColors.softApricot : AppColors.deepTeal,
-                          ),
+                        child: Icon(
+                          Icons.sell_rounded,
+                          color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Book Price',
+                              style: AppText.bodyMedium(
+                                color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            if (_isLoadingDetail) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                width: 120,
+                                height: 18,
+                                decoration: BoxDecoration(
+                                  color: isDark ? AppColors.surfaceDark : AppColors.trackNeutral,
+                                  borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
+                                ),
+                              ),
+                            ] else ...[
+                              Text(
+                                _formatPrice(),
+                                style: AppText.sectionHeading(
+                                  color: isDark ? AppColors.softApricot : AppColors.deepTeal,
+                                ),
+                              ),
+                              if (_book.priceNote != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  _book.priceNote!,
+                                  style: AppText.caption(
+                                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!_isLoadingDetail && _book.priceAmount == null) ...[
+                    const SizedBox(height: AppSpacing.m),
+                    Text(
+                      _getPriceUnavailableReason(),
+                      style: AppText.caption(
+                        color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.s),
+                    Wrap(
+                      spacing: AppSpacing.s,
+                      runSpacing: AppSpacing.xs,
+                      children: [
+                        SecondaryButton(
+                          key: const Key('btn_view_google_play'),
+                          label: 'Lihat di Google Play Books',
+                          icon: Icons.open_in_new_rounded,
+                          onPressed: () => _openGooglePlayBooks(),
+                        ),
+                        TertiaryButton(
+                          key: const Key('btn_search_online_stores'),
+                          label: 'Cari harga di toko online',
+                          icon: Icons.search_rounded,
+                          onPressed: () => _searchOnlineStores(),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -433,6 +634,11 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
                     style: AppText.body(
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),
+                  ),
+                  const SizedBox(height: AppSpacing.m),
+                  // Pratinjau kotak peta mini toko buku terdekat
+                  MiniBookstoreMap(
+                    onOpenFullMap: _openMaps,
                   ),
                   const SizedBox(height: AppSpacing.m),
                   Row(

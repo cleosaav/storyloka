@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:storyloka/core/services/ledger_service.dart';
 import 'package:storyloka/data/database_helper.dart';
-import 'package:storyloka/data/models/feedback_entry.dart';
 import 'package:storyloka/data/models/game_score.dart';
 import 'package:storyloka/data/models/reading_session.dart';
 import 'package:storyloka/data/models/user_book.dart';
@@ -133,13 +132,13 @@ void main() {
     test('Tambah buku ke koleksi, perbarui progress, soft delete', () async {
       final repo = LocalLibraryRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
 
       final now = DateTime.now().toUtc();
       final book = UserBook(
         id: 'book_1',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         googleBooksId: 'gb_001',
         title: 'Bumi Manusia',
         authors: 'Pramoedya Ananta Toer',
@@ -193,13 +192,13 @@ void main() {
     test('Pindah buku dari wishlist ke collection', () async {
       final repo = LocalLibraryRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
 
       final now = DateTime.now().toUtc();
       final wishlistBook = UserBook(
         id: 'book_wish',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         googleBooksId: 'gb_002',
         title: 'Laskar Pelangi',
         listType: ListType.wishlist,
@@ -224,13 +223,13 @@ void main() {
     test('Simpan sesi membaca dan hitung total durasi', () async {
       final repo = LocalReadingRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
 
       final now = DateTime.now().toUtc();
       final session1 = ReadingSession(
         id: 's1',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         userBookId: 'book_1',
         startedAt: now.subtract(const Duration(minutes: 30)),
         endedAt: now,
@@ -240,7 +239,7 @@ void main() {
 
       final session2 = ReadingSession(
         id: 's2',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         userBookId: 'book_1',
         startedAt: now.subtract(const Duration(minutes: 60)),
         endedAt: now.subtract(const Duration(minutes: 40)),
@@ -266,12 +265,12 @@ void main() {
     test('Simpan blok, ambil genesis block, dan verifikasi integritas', () async {
       final repo = LocalLedgerRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
       final ledgerService = LedgerService(repo);
 
       // Buat genesis block
-      final genesis = await ledgerService.ensureGenesisBlock('user_123');
+      final genesis = await ledgerService.ensureGenesisBlock('00000000-0000-4000-8000-000000000001');
       expect(genesis.blockIndex, 0);
       expect(genesis.previousHash, '0');
       expect(genesis.hash.startsWith('00'), isTrue);
@@ -284,7 +283,7 @@ void main() {
       final now = DateTime.now().toUtc();
       final finishedBook = UserBook(
         id: 'book_finished_1',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         googleBooksId: 'gb_fin_1',
         title: 'Filosofi Teras',
         authors: 'Henry Manampiring',
@@ -301,7 +300,7 @@ void main() {
 
       final newBlock = await ledgerService.appendFinishedBook(
         finishedBook,
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         totalReadingSeconds: 3600,
       );
       expect(newBlock, isNotNull);
@@ -318,28 +317,18 @@ void main() {
     });
   });
 
-  group('Fase B1: LocalFeedbackRepository Tests', () {
-    test('Simpan feedback dan ambil daftar', () async {
+  group('Fase B1: LocalFeedbackRepository Tests (Read-Only — S7)', () {
+    test('Ambil daftar kesan & pesan tim PAM', () async {
+      const validUserId = '00000000-0000-4000-8000-000000000001';
       final repo = LocalFeedbackRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => validUserId,
       );
 
-      final now = DateTime.now().toUtc();
-      final entry = FeedbackEntry(
-        id: 'fb_1',
-        userId: 'user_123',
-        name: 'Mahasiswa PAM',
-        impression: 'Mata kuliah sangat seru dan menantang!',
-        suggestion: 'Pertahankan modul berbasis projek praktis.',
-        createdAt: now,
-      );
-
-      await repo.save(entry);
       final list = await repo.getAll();
-      expect(list.length, 1);
-      expect(list.first.name, 'Mahasiswa PAM');
-      expect(list.first.impression, 'Mata kuliah sangat seru dan menantang!');
+      expect(list.length, 3);
+      expect(list.first.name, 'Najmah Cleosa');
+      expect(list.last.name, 'Naftali Margareta');
     });
   });
 
@@ -347,13 +336,13 @@ void main() {
     test('Simpan skor Snake dan hitung high score', () async {
       final repo = LocalScoreRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
 
       final now = DateTime.now().toUtc();
       await repo.saveScore(GameScore(
         id: 'sc_1',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         game: 'snake',
         score: 30,
         playedAt: now,
@@ -361,7 +350,7 @@ void main() {
 
       await repo.saveScore(GameScore(
         id: 'sc_2',
-        userId: 'user_123',
+        userId: '00000000-0000-4000-8000-000000000001',
         game: 'snake',
         score: 70,
         playedAt: now.add(const Duration(minutes: 5)),
@@ -380,7 +369,7 @@ void main() {
     test('Simpan dan ambil riwayat chat lokal', () async {
       final repo = LocalChatRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_123',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000001',
       );
 
       final reply = await repo.sendMessage('Rekomendasi buku fantasi', []);
@@ -403,13 +392,13 @@ void main() {
       // 1. Simpan data lewat instance repo pertama
       final repo1 = LocalLibraryRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_persist',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000002',
       );
 
       final now = DateTime.now().toUtc();
       await repo1.addBook(UserBook(
         id: 'persist_book_1',
-        userId: 'user_persist',
+        userId: '00000000-0000-4000-8000-000000000002',
         googleBooksId: 'gb_persist_01',
         title: 'Atomic Habits',
         authors: 'James Clear',
@@ -424,7 +413,7 @@ void main() {
       // 2. Simulasikan aplikasi ditutup dan dibuka kembali dengan membuat instance baru
       final repo2 = LocalLibraryRepository(
         dbHelper: dbHelper,
-        userIdProvider: () async => 'user_persist',
+        userIdProvider: () async => '00000000-0000-4000-8000-000000000002',
       );
 
       final loadedBooks = await repo2.getBooks(listType: ListType.collection);

@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/database_helper.dart';
+import '../../data/repositories/local/local_repositories.dart';
 import '../config/env.dart';
 import 'secure_session_store.dart';
 
@@ -184,7 +185,6 @@ class SyncService extends ChangeNotifier {
         'user_books',
         'reading_sessions',
         'ledger_blocks',
-        'feedbacks',
         'game_scores',
       ];
 
@@ -210,13 +210,19 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  /// 1. PUSH PENDING: Urutan tabel PRD §8.3:
-  /// user_books → reading_sessions → ledger_blocks → feedbacks → game_scores
+  /// 1. PUSH PENDING: Urutan tabel (feedbacks dikecualikan karena statis — Fase S7):
+  /// user_books → reading_sessions → ledger_blocks → game_scores
   Future<void> pushPending({String? userId}) async {
     final targetUserId = userId ?? await _resolveCurrentUserId();
-    if (targetUserId == null ||
-        targetUserId.isEmpty ||
-        targetUserId == 'demo_user') {
+    final isFakeId = targetUserId == 'demo_user' ||
+        targetUserId == 'default_user' ||
+        targetUserId == 'guest' ||
+        targetUserId == 'demo';
+    if (targetUserId == null || targetUserId.isEmpty || isFakeId) {
+      return;
+    }
+    if (remoteSource is SupabaseSyncRemoteSource && !isValidUuid(targetUserId)) {
+      debugPrint('[SyncService] Skip push: userId bukan UUID valid ($targetUserId)');
       return;
     }
 
@@ -274,19 +280,7 @@ class SyncService extends ChangeNotifier {
         },
       );
 
-      // 4. feedbacks
-      await _pushTable(
-        db: db,
-        tableName: 'feedbacks',
-        userId: targetUserId,
-        transform: (row) {
-          final payload = Map<String, dynamic>.from(row);
-          payload.remove('sync_status');
-          return payload;
-        },
-      );
-
-      // 5. game_scores
+      // 4. game_scores
       await _pushTable(
         db: db,
         tableName: 'game_scores',
@@ -329,16 +323,24 @@ class SyncService extends ChangeNotifier {
       final payload = transform(row);
       final id = row['id'] as String;
 
-      // Upsert ke Remote Source dengan onConflict: 'id'
-      await remoteSource.upsert(tableName, payload);
+      try {
+        // Upsert ke Remote Source dengan onConflict: 'id'
+        await remoteSource.upsert(tableName, payload);
 
-      // Tandai baris di SQLite sebagai synced
-      await db.update(
-        tableName,
-        {'sync_status': 'synced'},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+        // Tandai baris di SQLite sebagai synced jika berhasil
+        await db.update(
+          tableName,
+          {'sync_status': 'synced'},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } catch (e) {
+        // Tangani error upsert: catat log tanpa data sensitif / password (PRD §8.3 & S7)
+        if (kDebugMode) {
+          debugPrint('[SyncService] Gagal upsert tabel $tableName id $id: $e');
+        }
+        // Baris dibiarkan tetap 'pending' agar dicoba kembali saat resume
+      }
     }
   }
 
@@ -346,7 +348,17 @@ class SyncService extends ChangeNotifier {
   /// Last-write-wins berdasarkan updated_at untuk user_books.
   /// Append-only untuk tabel lainnya.
   Future<void> pullAll(String userId) async {
-    if (userId.isEmpty || userId == 'demo_user') return;
+    final isFakeId = userId == 'demo_user' ||
+        userId == 'default_user' ||
+        userId == 'guest' ||
+        userId == 'demo';
+    if (userId.isEmpty || isFakeId) {
+      return;
+    }
+    if (remoteSource is SupabaseSyncRemoteSource && !isValidUuid(userId)) {
+      debugPrint('[SyncService] Skip pull: userId bukan UUID valid ($userId)');
+      return;
+    }
 
     _isSyncing = true;
     _state = SyncState.syncing;
@@ -369,14 +381,7 @@ class SyncService extends ChangeNotifier {
       // 3. Pull ledger_blocks (Terurut block_index ASC)
       await _pullLedgerBlocks(db, userId);
 
-      // 4. Pull feedbacks (Append-only)
-      await _pullAppendOnlyTable(
-        db: db,
-        tableName: 'feedbacks',
-        userId: userId,
-      );
-
-      // 5. Pull game_scores (Append-only)
+      // 4. Pull game_scores (Append-only)
       await _pullAppendOnlyTable(
         db: db,
         tableName: 'game_scores',

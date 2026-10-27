@@ -6,7 +6,6 @@ import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/theme/app_spacing.dart';
 import 'package:storyloka/core/theme/app_text.dart';
 import 'package:storyloka/core/widgets/demo_widgets.dart';
-import 'package:storyloka/data/models/feedback_entry.dart';
 import 'package:storyloka/data/models/user_book.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
 import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
@@ -117,7 +116,7 @@ void main() {
       expect(find.textContaining('Kembali ke Beranda'), findsOneWidget);
     });
 
-    testWidgets('3. FeedbackPage format tanggal menggunakan id_ID', (tester) async {
+    testWidgets('3. FeedbackPage memuat pengantar bahasa Indonesia dan kartu tim pengembang', (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -125,27 +124,16 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
 
-      final feedbackRepo = FakeFeedbackRepository();
-      final dt = DateTime(2026, 10, 23, 14, 30);
-      await feedbackRepo.save(
-        FeedbackEntry(
-          id: 'fb-locale-1',
-          userId: 'test_user',
-          name: 'Siti Rahma',
-          impression: 'Materi sangat jelas',
-          suggestion: 'Pertahankan metode praktikumnya',
-          createdAt: dt,
-        ),
-      );
-
       await tester.pumpWidget(_buildWrapper(
         child: const FeedbackPage(),
-        feedbackRepo: feedbackRepo,
       ));
       await tester.pumpAndSettle();
 
-      // Memeriksa tanggal format Indonesia: "23 Okt 2026, 14:30"
-      expect(find.textContaining('23 Okt 2026'), findsOneWidget);
+      // Memeriksa teks pengantar dalam Bahasa Indonesia yang baku
+      expect(find.textContaining('Kesan dan pesan dari kelompok kami'), findsOneWidget);
+      expect(find.text('Najmah Cleosa'), findsOneWidget);
+      expect(find.text('Melanie Bunga Chintya Pawesty'), findsOneWidget);
+      expect(find.text('Naftali Margareta'), findsOneWidget);
     });
   });
 }

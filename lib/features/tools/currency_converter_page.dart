@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -154,7 +155,7 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
       fmt = DateFormat('d MMM yyyy, HH:mm');
     }
     final formattedDate = fmt.format(_lastUpdated!);
-    if (AppConfig.useFakeData) {
+    if (kDebugMode && AppConfig.useFakeData) {
       return 'Kurs contoh (mode demo) • $formattedDate';
     }
     if (_isFromCache) {

@@ -35,14 +35,120 @@ class CompositeBookSearchRepository implements GoogleBooksRepository {
   })  : googleRepo = googleRepo ?? GoogleBooksRepository(),
         openLibraryRepo = openLibraryRepo ?? OpenLibraryRepository();
 
+  final Map<String, GoogleBooksDetailCacheEntry> _detailCache = {};
+
   /// Jumlah entri aktif di cache memori.
   int get cacheSize => _cache.length;
 
+  @override
+  int get detailCacheSize => _detailCache.length;
+
   /// Bersihkan seluruh cache pencarian di memori.
-  void clearCache() => _cache.clear();
+  void clearCache() {
+    _cache.clear();
+    clearDetailCache();
+  }
+
+  @override
+  void clearDetailCache() {
+    _detailCache.clear();
+    googleRepo.clearDetailCache();
+  }
 
   /// Ambil entri cache untuk pengujian.
   SearchCacheEntry? getCacheEntry(String key) => _cache[key];
+
+  @override
+  Future<BookSearchResult?> getDetail(String googleBooksId) async {
+    final cleanId = googleBooksId.trim();
+    if (cleanId.isEmpty) return null;
+
+    final cached = _detailCache[cleanId];
+    if (cached != null && !cached.isExpired) {
+      if (kDebugMode) {
+        debugPrint('[CompositeBookSearch] Detail cache HIT untuk id "$cleanId"');
+      }
+      return cached.detail;
+    }
+
+    BookSearchResult? detail;
+    bool googleFailed = false;
+
+    try {
+      detail = await googleRepo.getDetail(cleanId);
+    } catch (e) {
+      googleFailed = true;
+      if (kDebugMode) {
+        debugPrint('[CompositeBookSearch] Google getDetail gagal ($e)');
+      }
+    }
+
+    // Jika googleRepo berhasil dan mengembalikan detail:
+    if (detail != null) {
+      // Rantai pengayaan Open Library bila masih kosong — Fase S3
+      final needsSynopsis =
+          detail.synopsis == null || detail.synopsis!.trim().isEmpty;
+      final needsPageCount =
+          detail.pageCount == null || detail.pageCount! <= 0;
+      final needsGenre = detail.genre == null || detail.genre!.trim().isEmpty;
+
+      if ((needsSynopsis || needsPageCount || needsGenre) &&
+          detail.isbn != null &&
+          detail.isbn!.trim().isNotEmpty) {
+        try {
+          final olBook = await openLibraryRepo.lookupIsbn(detail.isbn!);
+          if (olBook != null) {
+            String? enrichedSynopsis = detail.synopsis;
+            String? enrichedSource = detail.synopsisSource;
+
+            if (needsSynopsis) {
+              if (olBook.synopsis != null &&
+                  olBook.synopsis!.trim().isNotEmpty) {
+                enrichedSynopsis = olBook.synopsis;
+                enrichedSource = 'Open Library';
+              } else if (olBook.googleBooksId.contains('OL') ||
+                  olBook.googleBooksId.startsWith('/works/')) {
+                // Coba ambil dari works jika ada id karya
+                final workSynopsis = await openLibraryRepo
+                    .fetchWorkSynopsis(olBook.googleBooksId);
+                if (workSynopsis != null && workSynopsis.trim().isNotEmpty) {
+                  enrichedSynopsis = workSynopsis;
+                  enrichedSource = 'Open Library';
+                }
+              }
+            }
+
+            detail = detail.copyWith(
+              pageCount: needsPageCount ? olBook.pageCount : detail.pageCount,
+              genre: needsGenre ? olBook.genre : detail.genre,
+              synopsis: enrichedSynopsis,
+              synopsisSource: enrichedSource,
+            );
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[CompositeBookSearch] Open Library enrichment gagal: $e');
+          }
+        }
+      }
+    } else if (googleFailed) {
+      // Jika Google gagal (mis. kuota habis/timeout), coba cek apakah cleanId bisa dicari via Open Library
+      try {
+        final cleanIsbn = cleanId.replaceAll(RegExp(r'[\s\-]'), '');
+        final olBook = await openLibraryRepo.lookupIsbn(cleanIsbn);
+        if (olBook != null) {
+          detail = olBook.copyWith(synopsisSource: 'Open Library');
+        }
+      } catch (_) {}
+    }
+
+    if (detail != null) {
+      _detailCache[cleanId] =
+          GoogleBooksDetailCacheEntry(detail, DateTime.now());
+    }
+
+    return detail;
+  }
 
   @override
   Future<List<BookSearchResult>> search(

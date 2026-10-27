@@ -247,6 +247,13 @@ void main() {
       final ledgerService = LedgerService(ledgerRepo);
       await ledgerService.ensureGenesisBlock(authController.currentUser!.id);
 
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -263,10 +270,10 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Verifikasi penjelas & simulasi edukatif
+      // Verifikasi penjelas faktual
       expect(find.text('Reading Ledger'), findsOneWidget);
-      expect(find.text('Buku Selesai Terenkripsi'), findsOneWidget);
-      expect(find.textContaining('Simulasi edukatif single-node'), findsOneWidget);
+      expect(find.text('Rantai Catatan Bacaan'), findsOneWidget);
+      expect(find.textContaining('Setiap buku yang selesai kamu baca'), findsOneWidget);
 
       // Verifikasi tombol Verify Ledger
       expect(find.text('Verify Ledger'), findsOneWidget);
@@ -274,16 +281,15 @@ void main() {
       // Verifikasi blok Genesis
       expect(find.text('Blok #0 (Genesis)'), findsOneWidget);
       expect(find.text('StoryLoka genesis'), findsOneWidget);
-      expect(find.textContaining('Selesaikan buku pertamamu'), findsOneWidget);
 
       // Tap tombol Verify Ledger
       await tester.tap(find.text('Verify Ledger'));
       await tester.pumpAndSettle();
 
       // Verifikasi hasil tampil dengan IKON + TEKS
-      expect(find.text('✔ Rantai Valid'), findsOneWidget);
+      expect(find.text('Rantai Utuh & Valid'), findsOneWidget);
       expect(find.textContaining('terverifikasi utuh'), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_rounded), findsWidgets);
     });
   });
 

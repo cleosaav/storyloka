@@ -6,9 +6,9 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 
 ## Ringkasan Progres
 
-- **Tahap saat ini:** Tahap R (Kesiapan Rilis & Konfigurasi Nyata)
-- **Fase terakhir selesai:** Fase R6 — Sensor Cahaya Native (TYPE_LIGHT) untuk Tema Auto
-- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6 telah selesai. 244/244 tests passed.
+- **Tahap saat ini:** Tahap S (Stabilisasi & Penyempurnaan Fitur)
+- **Fase terakhir selesai:** Fase S7 — Isolasi Data Kesan & Pesan Pengguna (Perbaikan Bug S7)
+- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S7 telah selesai. Seluruh tes lulus (100%).
 
 ---
 
@@ -1375,5 +1375,330 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
   - `flutter test test/fase_r6_test.dart`: **8/8 tests passed**.
   - `flutter test` (keseluruhan suite): **244/244 tests passed** (100% lolos).
 - **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S1 — Stabilitas AI Chat & Provider Chain (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Provider Chain (`lib/data/repositories/remote/`):**
+    - Rantai penyedia terintegrasi: DeepSeek (`deepseek-chat`) → Gemini Model Utama (`Env.geminiModel`: `gemini-3.5-flash-lite`) → Gemini Model Cadangan (`Env.geminiModelFallbacks`: `gemini-3.5-flash`).
+    - Model cadangan dibaca dari `.env` lewat `Env.geminiModelFallbacks` dan didokumentasikan di `.env.example` tanpa secret.
+    - Model diverifikasi aktif melalui skrip `tool/list_gemini_models.dart` dan `tool/ai_smoke_test.dart`.
+  - **Kebijakan Retry & Exponential Backoff:**
+    - Retry per penyedia hingga maksimal 3 percobaan untuk error 429, 500, 502, 503, 504, timeout, dan `SocketException`.
+    - Exponential backoff + jitter 15% (~0.8s, ~1.6s, ~3.2s). Menghormati header `Retry-After` bila disediakan server.
+    - Timeout per percobaan 20 detik, batas total satu pesan 45 detik.
+    - Injeksi `delayFn` pada `FallbackChatRepository` memungkinkan eksekusi unit test instan tanpa jeda clock nyata.
+  - **Fallback Komprehensif:**
+    - Fallback ke penyedia berikutnya untuk seluruh jenis kegagalan, termasuk 400, 401, 403, 404, dan 402 (saldo habis).
+    - Error konfigurasi/auth dicatat ke debug log (tanpa API key) dan hanya dilempar ke pengguna jika seluruh rantai penyedia gagal.
+  - **Circuit Breaker In-Memory (`circuit_breaker.dart`):**
+    - Kegagalan permanen/auth/config/402 di-cooldown selama 10 menit (600 detik).
+    - Kegagalan sementara (5xx / 429 setelah 3 retry) di-cooldown selama 60 detik.
+    - State hanya disimpan di memori dan di-reset saat aplikasi dibuka ulang atau via `CircuitBreaker.reset()`.
+  - **Parsing Respons Tahan Banting:**
+    - Menangani `choices[0].message.content` null, `candidates` kosong, dan `parts` kosong dengan pesan ramah tanpa crash.
+    - Menangani `finishReason = MAX_TOKENS` / `length` dengan tetap merangkai dan mengembalikan teks parsial yang ada.
+    - Menangani `finishReason = SAFETY` / `content_filter` dengan pesan ramah.
+  - **Pengalaman Pengguna (UI & State) di `AiChatPage`:**
+    - Pembedaan pesan error: Offline ("Tidak ada koneksi internet. Periksa jaringan Anda dan coba lagi."), Sibuk ("Layanan AI sedang ramai, coba lagi sebentar."), dan Konfigurasi ("Konfigurasi AI belum benar. Periksa API key di pengaturan.").
+    - Teks input tidak hilang saat gagal; tombol "Kirim ulang" tersedia di SnackBar; pesan gagal tidak disimpan ke database SQLite maupun riwayat konteks.
+    - Pencegahan pengiriman ganda (`_isLoading` guard).
+    - Typing indicator menampilkan teks status dinamis `"Mencoba lagi..."` saat retry atau fallback berlangsung.
+  - **Smoke Test Tool (`tool/ai_smoke_test.dart`):**
+    - Menguji live network call ke masing-masing penyedia (DeepSeek, Gemini Utama, Gemini Cadangan) dan mencetak status code serta latensi tanpa membocorkan API key.
+  - **Pengujian Unit (`test/fase_s1_test.dart` & `test/fase_r4_test.dart`):**
+    - 11 unit test Fase S1 menguji: urutan 503-503-200 retry berhasil, DeepSeek 401 langsung beralih ke Gemini tanpa retry berulang, Gemini 503 beralih ke model cadangan, pesan ramah saat semua gagal, pesan offline saat tanpa koneksi, header `Retry-After`, circuit breaker cooldown & reset, respons MAX_TOKENS parsial, respons candidates kosong, dan status update callback.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s1_test.dart`: **11/11 tests passed**.
+  - `flutter test test/fase_r4_test.dart`: **18/18 tests passed**.
+  - `flutter test` (keseluruhan suite): **255/255 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S2 — Input Halaman Manual & Validasi Stabilitas (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Identifikasi dan Perbaikan Akar Masalah (`lib/features/reading/reading_progress_page.dart`):**
+    - State `_needsTotalInput = pages <= 0` dihitung satu kali saat data buku pertama kali dimuat (`_loadBook()`) dan disimpan sebagai state independen.
+    - Visibilitas kartu input total halaman tidak lagi diturunkan saat pengguna sedang mengetik digit pertama atau nilai diubah.
+    - Menambahkan `inputFormatters: [FilteringTextInputFormatter.digitsOnly]` pada `AppTextField` dan field total halaman serta field halaman saat ini.
+    - Validasi angka total halaman 1 sampai 99999 dengan pesan error terlihat langsung di bawah field (`_totalPageError`).
+  - **Tautan Ubah Total Halaman:**
+    - Menyediakan tautan interaktif "Ubah total halaman" (`change_total_pages_link`) pada kartu Current Progress untuk memperbaiki kasus data API Google Books yang salah/tidak akurat.
+    - Tombol batal / close (`cancel_change_total_pages_button`) untuk mengembalikan total halaman ke nilai semula bila pengguna membatalkan perubahan.
+  - **Field Halaman Saat Ini (Tanpa Menimpa Input Pengguna & Tanpa Loncat Kursor):**
+    - `_onPageTextChanged` tidak lagi menimpa `_pageController.text` dan tidak melakukan silent clamping yang membuat teks dan state berbeda.
+    - Jika halaman yang diketik melebihi total halaman, pesan error terlihat jelas di bawah field (`"Halaman tidak boleh melebihi total ({_totalPages})"`) dan tombol Save Progress dinonaktifkan (`_canSave` = false). Kursor pengetikan tetap stabil dan tidak loncat.
+  - **Slider Optimasi:**
+    - Jika total halaman buku besar (> 300), properti `divisions` diset `null` (nilai dibulatkan dengan `round()`) untuk mencegah beban render berlebih pada widget slider.
+  - **Lookup Otomatis Total Halaman Sebelum Meminta Pengguna:**
+    - Saat buku dimuat dengan `pageCount <= 0`, sistem mencoba mencari detail halaman otomatis via `BookSearchRepository` (melalui ISBN jika tersedia, atau pencarian judul) sebelum menampilkan input manual wajib.
+  - **Responsivitas & Anti-Overflow:**
+    - Menggunakan `Wrap` pada header kartu Current Progress dan `Expanded` pada header kartu Total Halaman agar bebas RenderFlex overflow pada layar sempit (360×640) dengan text scaling 1.3.
+    - Membungkus body `Scaffold` dengan `ResponsiveBody` untuk membatasi lebar maksimum 560 px di layar tablet.
+  - **Pengujian Unit & Widget (`test/fase_s2_test.dart`):**
+    - 7 skenario pengujian komprehensif menguji:
+      1. Mengetik "350" di total halaman: field tetap ada dan bernilai 350 (tidak hilang pada digit pertama).
+      2. Mengetik "120" di halaman saat ini: nilai terupdate stabil.
+      3. Mengetik angka melebihi total: error muncul di bawah field dan Save nonaktif.
+      4. Save progress menyimpan nilai yang benar ke repository.
+      5. Tautan "Ubah total halaman" membuka kembali field total halaman.
+      6. Slider divisions diset `null` ketika total halaman > 300.
+      7. "Finished This Book" tetap bekerja dan menandai buku selesai ke LedgerService.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s2_test.dart`: **7/7 tests passed**.
+  - `flutter test test/fase_u1_test.dart`: **5/5 tests passed** (bebas overflow di semua breakpoint).
+  - `flutter test` (seluruh suite proyek): **262/262 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S3 — Pengayaan Informasi Buku: Sinopsis, Harga, Halaman (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Identifikasi dan Perbaikan Akar Masalah (`lib/features/book_detail/search_book_detail_page.dart`):**
+    - Halaman detail pencarian sebelumnya hanya memakai data hasil daftar pencarian (`widget.book`) yang sering dipotong/dikosongkan oleh respons list Google Books API.
+    - Ditambahkan pemanggilan eksplisit `getDetail(googleBooksId)` ke endpoint `GET /volumes/{id}` lengkap dengan `country=ID` dan API key.
+    - Mengambil seluruh field `volumeInfo` (`description`, `subtitle`, `publishedDate`, `pageCount`/`printedPageCount`, `categories`, `language`, `averageRating`, `ratingsCount`, `infoLink`, `previewLink`) dan `saleInfo` lengkap (`saleability`, `listPrice`, `retailPrice`, `buyLink`, `country`).
+  - **Cache Memori Detail (TTL 10 Menit):**
+    - `GoogleBooksRepository` dan `CompositeBookSearchRepository` dilengkapi cache in-memory `_detailCache` berdurasi 10 menit untuk mencegah pemanggilan HTTP berulang pada ID buku yang sama.
+  - **Rantai Pengayaan Open Library (Fallback):**
+    - Jika setelah pemanggilan Google Books detail data sinopsis, jumlah halaman, atau genre masih kosong/tidak ada, `CompositeBookSearchRepository` secara otomatis melakukan lookup ke Open Library via ISBN (`openlibrary.org/api/books?jscmd=data`) dan karya (`/works/{id}.json`).
+    - Keterangan kecil `"Sumber: Open Library"` dimunculkan secara transparan di bawah sinopsis saat sinopsis berasal dari Open Library.
+  - **Prinsip Kejujuran Harga (Tanpa Angka Karangan):**
+    - Harga HANYA diambil dari `saleInfo` Google Books (PRD & Fase R2). Jika buku tidak dijual secara digital di Google Play Books untuk wilayah Indonesia, kartu harga menyajikan alasan yang akurat (mis. `"Buku ini belum dijual di Google Play Books untuk wilayah Indonesia"`) tanpa mengarang angka.
+    - Dua tombol jujur disediakan:
+      1. `"Lihat di Google Play Books"` (membuka `buyLink` atau `infoLink`).
+      2. `"Cari harga di toko online"` (membuka pencarian web berdasarkan judul + ISBN via `url_launcher`).
+    - Bila status NOT_FOR_SALE di Indonesia, repositori melakukan percobaan satu request tambahan tanpa parameter `country=ID` untuk mendeteksi harga internasional (misal Google Play Books AS) dengan label harga transparan (mis. `"Harga di Google Play Books (US): USD 9.99"`).
+  - **Skeleton Loading & Penggabungan Data (`mergeWith`):**
+    - Menampilkan skeleton shimmer loading pada kartu Sinopsis dan Harga saat detail sedang dimuat di latar belakang.
+    - Jika terjadi error (timeout / 429), data awal daftar pencarian tidak dihapus atau hilang.
+    - Nilai non-null dari hasil detail otomatis menang dan menggantikan data awal (`mergeWith`).
+    - Saat pengguna menekan "Add to Collection" atau "Add to Wishlist", data yang disimpan adalah data hasil gabungan yang lengkap, bukan data minim daftar.
+  - **Pengayaan Latar Belakang di Wishlist & Collection:**
+    - `CollectionBookDetailPage` dan `WishlistBookDetailPage` memeriksa apakah sinopsis, jumlah halaman, atau harga tersimpan masih kosong. Jika kosong, pengayaan dilakukan satu kali di latar belakang (`_enrichIfNeeded()`), disimpan via `updateBook()`, dan ditandai `sync_status = 'pending'`.
+  - **Pengujian Komprehensif (`test/fase_s3_test.dart`):**
+    - 9 skenario pengujian unit & widget dengan fixture JSON lengkap:
+      1. GoogleBooksRepository mengambil volumeInfo dan saleInfo dengan harga lengkap.
+      2. Menangani status NOT_FOR_SALE dan harga kosong secara akurat.
+      3. In-memory cache 10 menit mencegah pemanggilan HTTP berulang.
+      4. CompositeBookSearchRepository rantai pengayaan Open Library mengisi sinopsis dan halaman kosong.
+      5. `BookSearchResult.mergeWith` memenangkan nilai non-null dari detail.
+      6. SearchBookDetailPage error 429/timeout tidak menghapus data yang sudah ada.
+      7. Menampilkan alasan jujur dan tombol saat harga tidak tersedia.
+      8. Add to Collection menyimpan data hasil gabungan yang lengkap.
+      9. Background enrichment otomatis pada CollectionBookDetailPage & WishlistBookDetailPage.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s3_test.dart`: **9/9 tests passed**.
+  - `flutter test test/fase_s1_test.dart test/fase_s2_test.dart test/fase_s3_test.dart`: **27/27 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S4 — Sinkronisasi Geometri Papan & Perbaikan Prematur Game Over Snake (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Identifikasi dan Perbaikan Akar Masalah (`lib/features/tools/snake/snake_page.dart`):**
+    - Sebelumnya engine dibuat dengan ukuran tetap 15x15 di `initState()`, sedangkan `_SnakePainter` menghitung jumlah baris sendiri dari tinggi kontainer dan meregangkan sel vertikal (`cellH`). Akibatnya, ular menabrak "dinding tak terlihat" di baris 15 padahal masih ada baris terlihat di bawahnya.
+    - Menjadikan `LayoutBuilder` sebagai **satu sumber kebenaran** (PRD §10.1): menghitung `cell = availableWidth / cols` dan `rows = (availableHeight / cell).floor()`.
+    - Engine diinisialisasi atau diubah ukurannya hanya saat status `ready`. Saat game berjalan (`running`/`paused`/`gameOver`), ukuran baris dipertahankan dan jika terjadi rotasi layar permainan otomatis di-pause.
+  - **Render Geometri Papan Presisi & Sel Persegi Sempurna:**
+    - `SnakePainter` wajib memakai `engine.rows` dan sel persegi sempurna tanpa peregangan vertikal (`cellW == cellH`).
+    - Kontainer papan diatur berukuran tepat `width = cols * cell` dan `height = rows * cell`, dibungkus dalam `Center` di dalam `Expanded` tanpa ada area sisa atau baris terdistorsi.
+  - **Penyempurnaan Kontrol & Stabilitas State:**
+    - **Tilt Control (Gyroscope):** Ditambahkan warmup period (400 ms) saat aktivasi dan hysteresis netral threshold (`< 0.5 rad/s`) pada `SensorService` agar sentuhan jari/getaran awal tidak memicu arah acak. Pada `SnakePage`, tilt control hanya mengubah arah saat status `running` dan tidak memicu start otomatis saat baru diaktifkan di state `ready`.
+    - **Swipe Gesture:** Gesture drag/swipe diabaikan saat state `ready` atau `paused` (hanya aktif saat `running`). Dilengkapi threshold minimal (3 px) untuk mencegah jitter sentuhan.
+    - **Restart Game Over (Play again):** Mereset timer, skor ke 0, kepala ular kembali ke tengah (`cols ~/ 2`, `rows ~/ 2`), dan menjalankan timer kembali secara bersih.
+    - **Pencegahan Timer Leak:** Timer `_ticker` dibatalkan secara eksplisit di `dispose()`, saat jeda (`pause`), dan saat restart.
+  - **Pengujian Komprehensif (`test/fase_s4_test.dart` & `test/fase_a5_snake_test.dart`):**
+    - 9 skenario pengujian unit & widget di `test/fase_s4_test.dart`:
+      1. Ukuran 360x640: `engine.rows` sama persis dengan baris yang digambar, tinggi papan tepat `rows * cell`, dan sel persegi sempurna (`cellW == cellH`).
+      2. Ukuran 360x640: ular bergerak lurus ke bawah tidak game over sebelum menyentuh baris terakhir yang digambar (`rows - 1`), dan game over tepat saat melewati batas.
+      3. Ukuran 800x1280 (Tablet): `engine.rows` dihitung proporsional dari tinggi yang tersedia, sel tetap persegi, dan papan dipusatkan.
+      4. Ukuran 800x1280 (Tablet): ular bergerak ke bawah menyentuh baris terakhir tanpa game over prematur.
+      5. Kontrol Tilt tidak memicu pergerakan ular atau auto-start saat baru diaktifkan di state `ready`.
+      6. Swipe gesture diabaikan pada state `ready` dan `paused`.
+      7. Restart setelah game over (Play again) mereset skor, ular kembali ke tengah, dan timer berjalan.
+      8. Timer permainan dibatalkan secara bersih saat `dispose` tanpa exception.
+      9. Engine murni: mempertahankan seluruh pengujian pergerakan dan ukuran papan.
+    - 13/13 unit test pada `test/fase_a5_snake_test.dart` tetap dipertahankan dan lulus 100%.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s4_test.dart`: **9/9 tests passed**.
+  - `flutter test test/fase_a5_snake_test.dart test/fase_s1_test.dart test/fase_s2_test.dart test/fase_s3_test.dart test/fase_s4_test.dart`: **49/49 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S5 — Reading Ledger Profesional, Faktual & Bebas Demo (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Pembersihan Banner Demo & Emoji (`lib/features/profile/reading_ledger_page.dart`):**
+    - Menghapus banner "Simulasi edukatif single-node..." dan emoji `ℹ️` / `✔` / `✖`.
+    - Mengganti header dengan deskripsi singkat yang faktual: *"Setiap buku yang selesai kamu baca dicatat sebagai blok. Blok saling terhubung lewat hash SHA-256 dan Proof of Work; mengubah satu data saja membuat rantai tidak valid."*
+    - Catatan arsitektur teknis yang jujur dipindahkan ke bottom sheet "Tentang Reading Ledger" yang dapat diakses melalui ikon info (`Icons.info_outline_rounded`) di AppBar.
+  - **Ringkasan Lengkap di Bagian Atas:**
+    - Kartu ringkasan menampilkan 4 metrik penting:
+      1. Jumlah Blok (`_blocks.length` Blok)
+      2. Buku Tercatat (`finishedBooksCount` Buku, dihitung dari blok `blockIndex > 0`)
+      3. Status Verifikasi Terakhir + Waktu (`Valid (HH:mm)` atau `Blok #X Rusak`)
+      4. Status Sinkronisasi reaktif dari `SyncService.instance.state.label`.
+  - **Auto-Verify & Tombol Manual "Verify Ledger":**
+    - Verifikasi integritas rantai secara otomatis berjalan saat halaman dibuka.
+    - Tombol manual "Verify Ledger" dengan status ikon + teks yang jelas (menggunakan `Icons.check_circle_rounded` dan `Icons.cancel_rounded` sesuai token tema, tanpa karakter emoji).
+    - Menandai kartu blok yang rusak: jika verifikasi gagal, kartu blok pertama yang rusak (`block.blockIndex == invalidIndex`) menampilkan badge *"Rusak / Tidak Valid"*, border merah error, dan latar belakang kemerahan. Blok setelahnya ditandai *"Rantai Terputus"*.
+  - **Bottom Sheet Detail Lengkap & Timeline Antarblok:**
+    - Setiap kartu blok dapat diketuk (`onTap`) untuk membuka bottom sheet modal rincian: index, waktu pencatatan lengkap, judul, penulis, jumlah halaman, durasi baca terformat, rating bintang, hash SHA-256 penuh, previous hash penuh, nonce, status PoW, dan payload data JSON kanonikal terindentasi rapi.
+    - Sedia tombol salin hash (`Clipboard.setData`) dengan umpan balik SnackBar.
+    - Antarblok dihubungkan oleh visual connector (timeline) dengan ikon link dan garis vertikal yang berubah merah saat rantai terputus.
+  - **Pull-to-Refresh & Error/Loading States:**
+    - Pull-to-refresh memicu `SyncService.instance.pullAll(userId)` sebelum memuat ulang blok lokal.
+    - Error state menampilkan pesan ramah tanpa string exception `$e` mentah, lengkap dengan tombol "Coba Lagi".
+  - **Penghapusan Fallback `demo_user` & Idempotensi Genesis Block:**
+    - Menghapus fallback `'demo_user'` di `ReadingLedgerPage`. Jika belum login, menampilkan state *"Silakan Masuk"* dengan tombol login.
+    - Menginjeksi `LedgerService` ke `AuthController` di `lib/app/providers.dart`: Genesis block otomatis dibuat saat `register`, `login`, dan restorasi sesi (`checkSession`), sesuai PRD §10.2.
+    - Operasi `appendFinishedBook` dan `ensureGenesisBlock` terbukti idempoten tanpa duplikasi blok.
+  - **Audit Teks Demo UI:**
+    - Memeriksa seluruh kemunculan pattern `demo|simulasi|fake|dummy|contoh` di folder `lib/`.
+    - Memastikan tidak ada label demo yang tampil di mode rilis: membungkus banner mode demo di AI Chat dan Currency Converter dengan `kDebugMode`, serta mengganti fallback pengguna menjadi *"Pembaca StoryLoka"*.
+    - Menambahkan tombol *"Ubah data blok (uji)"* khusus di `kDebugMode` untuk menguji bahwa verifikasi langsung mendeteksi manipulasi data.
+  - **Pengujian Komprehensif (`test/fase_s5_test.dart`):**
+    - 8 skenario pengujian komprehensif lolos 100%:
+      1. State Unauthenticated: Menampilkan state Silakan Masuk tanpa fallback `demo_user` dan tanpa membuat blok palsu.
+      2. Deskripsi faktual tampil dan TIDAK ada banner demo/simulasi atau emoji.
+      3. Ringkasan di bagian atas & auto-verify saat halaman dibuka.
+      4. Tombol manual Verify Ledger memicu verifikasi dan menampilkan hasil.
+      5. Blok yang rusak ditandai dengan jelas saat manipulasi rantai terdeteksi.
+      6. Ketuk blok membuka bottom sheet detail lengkap dengan hash SHA-256 dan JSON.
+      7. Genesis block otomatis dibuat saat Register akun baru dan bersifat idempoten.
+      8. Mode uji manipulasi `kDebugMode` mendeteksi kerusakan rantai saat ditekan.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s5_test.dart`: **8/8 tests passed** (100% lolos).
+  - `flutter test test/fase_a6_test.dart test/fase_s5_test.dart`: **14/14 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S6 — Peta Toko Buku Terdekat Bawaan (Gaya Leaflet) (SELESAI)
+
+- **Cakupan yang selesai:**
+  - **Pemasangan Paket & Kompatibilitas:**
+    - Memasang dependensi `flutter_map: ^8.3.2` dan `latlong2: ^0.10.1` yang sepenuhnya kompatibel dengan Flutter 3.47 / Dart 3.13 tanpa konflik versi.
+  - **Data Layer & Abstraksi Repositori:**
+    - Model `Bookstore` di `lib/data/models/bookstore.dart` (`id`, `name`, `lat`, `lng`, `address` dari tag `addr:*`, `phone`, `website`, `openingHours`, `distanceMeters`, `formattedDistance`).
+    - Model `PlaceResult` untuk geocoding Nominatim OSM dan fungsi matematika `calculateHaversineDistance` untuk kalkulasi jarak GPS lingkaran besar (Great-circle distance).
+    - Kontrak `BookstoreRepository` di `lib/data/repositories/bookstore_repository.dart`.
+    - Implementasi `OverpassBookstoreRepository` di `lib/data/repositories/remote/overpass_bookstore_repository.dart`:
+      - Query Overpass `node`, `way`, dan `relation` dengan `out center tags;` untuk `shop=books` dan `shop=bookstore`.
+      - Perluasan radius bertingkat otomatis: default 15 km → 20 km → 35 km → 50 km jika toko kosong.
+      - 4 mirror Overpass cadangan (`overpass-api.de`, `lz4.overpass-api.de`, `overpass.kumi.systems`, `maps.mail.ru`) untuk redundansi jaringan dengan timeout ringkas 4 detik per mirror.
+      - **Arsitektur Multi-Tier Resilient Fetching:** Jika Overpass API timeout/terblokir oleh ISP, sistem otomatis fallback ke Nominatim OSM POI Search (`toko buku $cityName`) dan dataset terverifikasi `IndonesianBookstoresSeed` (50+ toko buku ternama di Jabodetabek, Bandung, Yogyakarta, Solo, Semarang, Surabaya, Malang, Bali, Medan, Palembang, Makassar) sehingga titik toko buku dijamin selalu muncul.
+      - Header `User-Agent` resmi StoryLoka dan in-memory cache berdurasi 10 menit (tanpa menyimpan data toko ke database).
+      - Fallback nama toko kosong menjadi `"Toko buku (tanpa nama)"`.
+      - Geocoding lokasi manual Nominatim dengan User-Agent, debounce, in-memory cache, chip "Kota Cepat", dan fallback kota populer Indonesia.
+    - `FakeBookstoreRepository` di `lib/data/repositories/fake/fake_bookstore_repository.dart` untuk testing offline dan mock environment.
+    - Pendaftaran provider `BookstoreRepository` di `lib/app/providers.dart`.
+    - Konfigurasi `Env.mapTileUrl` di `lib/core/config/env.dart` dan `.env.example`.
+  - **Layar Peta Terintegrasi `/maps/bookstores` (`lib/features/tools/bookstore_map/bookstore_map_page.dart`):**
+    - Rute `/maps/bookstores` di atas shell router (`lib/app/router.dart`).
+    - AppBar dengan judul *"Toko Buku Terdekat"*, aksi *"Cari lokasi lain"* (Nominatim geocoding bottom sheet), dan *"Lokasi saya"* (GPS).
+    - Peta OpenStreetMap interaktif via `flutter_map` dengan tile OSM dan penyesuaian Dark Mode menggunakan `ColorFiltered matrix`.
+    - Lingkaran visual radius pencarian (`CircleLayer` & `CircleMarker`) dengan warna aksen botani di sekitar lokasi pencarian.
+    - Kamera cerdas adaptif (`_adjustCameraToFit`): otomatis memusatkan dan menyesuaikan tingkat zoom peta agar seluruh pin toko buku dan pengguna langsung terlihat di layar tanpa perlu zoom out manual.
+    - Baris chip filter radius interaktif (`5 km`, `10 km`, `15 km`, `25 km`, `50 km`) untuk mengubah radius pencarian secara instan.
+    - Atribusi resmi `"© OpenStreetMap contributors"` wajib dan terlihat di pojok peta.
+    - Marker lokasi pengguna (biru berdenyut) dan marker toko buku (ikon buku dengan status fokus / terpilih).
+    - Draggable Scrollable Bottom Sheet menampilkan daftar toko buku terurut jarak menaik (terdekat dahulu).
+    - Interaksi tap marker/item daftar menyorot toko, memusatkan peta (zoom in 15.5), dan menampilkan aksi: *"Rute"* (membuka rute Google Maps eksternal), *"Telepon"* (`tel:`), dan *"Website"* (browser).
+    - Penanganan izin lokasi via `LocationService` (dialog penjelasan, penanganan GPS nonaktif, input manual jika ditolak, tombol Buka Pengaturan jika ditolak permanen, dan koordinat default agar peta tidak blank).
+    - State lengkap: Loading (skeleton/spinner fleksibel), Kosong (*"Belum ada toko buku terdata di sekitar sini"* + tombol perluas radius hingga 50 km & Google Maps), Error jaringan (*"Coba Lagi"*), dan Sukses.
+    - Tampilan responsif bebas overflow di layar 360x640 dengan skala teks 1.3.
+  - **Pembaruan Navigasi & Pratinjau Peta Detail Buku:**
+    - Widget pratinjau peta kotak mini `MiniBookstoreMap` (`lib/features/book_detail/widgets/mini_bookstore_map.dart`) disematkan di dalam kartu *"Find Nearby Bookstores"* pada `SearchBookDetailPage` dan `WishlistBookDetailPage`.
+    - Peta kotak mini menampilkan tile OpenStreetMap (dengan penyesuaian tema gelap/terang), titik lokasi pengguna, dan pin/titik toko buku terdekat (`Bookstore`), badge jumlah toko di sekitar, serta tombol *Peta Penuh*.
+    - Tombol *"Open Maps"* dan tombol pilih kota manual tetap dipertahankan tepat di bawah kotak peta mini untuk membuka peta interaktif layar penuh `/maps/bookstores`.
+  - **Pengujian Komprehensif (`test/fase_s6_test.dart`):**
+    - 18 skenario pengujian unit & widget testing lolos 100%:
+      1. Formula Haversine menghitung jarak geospasial secara akurat.
+      2. Format jarak `Bookstore.formattedDistance` (meter dan kilometer).
+      3. Parsing fixture Overpass node lengkap (nama, `addr:*`, telepon, website, jam buka).
+      4. Parsing fixture Overpass way dengan `out center tags` dan tag kontak.
+      5. Parsing fixture Overpass relation tanpa nama menghasilkan *"Toko buku (tanpa nama)"*.
+      6. Parsing hasil geocoding Nominatim ke `PlaceResult`.
+      7. Pengurutan toko berdasarkan jarak terdekat (ascending).
+      8. Fallback ke mirror Overpass berikutnya saat mirror pertama gagal (HTTP 500 / error).
+      9. In-memory cache 10 menit mencegah HTTP call duplikat.
+      10. Perluasan radius otomatis (3 km → 5 km) saat hasil awal kosong.
+      11. Widget test: Tampilan sukses peta, marker, dan daftar toko buku.
+      12. Widget test: Atribusi OpenStreetMap wajib tampil.
+      13. Widget test: State kosong dengan tombol Perluas Radius dan Buka Google Maps.
+      14. Widget test: State error dengan tombol Coba Lagi.
+      15. Widget test: Responsif tanpa overflow pada layar 360x640 dengan textScale 1.3.
+      16. Widget test: Menampilkan chip radius interaktif dan dapat memilih radius 25 km.
+      17. Widget test: Tombol Perluas Radius pada state kosong dapat memperluas hingga 25 km dan 50 km.
+      18. Widget test: MiniBookstoreMap menampilkan peta kotak mini dengan titik toko terdekat dan navigasi peta penuh.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test test/fase_s6_test.dart`: **18/18 tests passed** (100% lolos).
+  - `flutter test test/fase_a2_test.dart test/fase_s6_test.dart test/fase_s3_test.dart`: **33/33 tests passed** (100% lolos).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase S7 — Kesan & Pesan: Halaman BACA SAJA Tim Pengembang (SELESAI)
+
+- **Keputusan Pemilik Proyek (Menggantikan Semua Asumsi Sebelumnya):**
+  - Halaman `/tools/feedback` bukan lagi form interaktif atau guestbook.
+  - Halaman ini merupakan halaman **BACA SAJA (Read-Only)** yang menampilkan evaluasi kesan dan pesan mata kuliah Pemrograman Aplikasi Mobile (PAM) dari 3 anggota kelompok pengembang StoryLoka.
+  - Data tertulis tetap di kode (`const List<TeamFeedback> teamFeedbacks`), bernilai identik untuk semua akun (termasuk yang belum login), dan tidak dapat diubah oleh pengguna.
+
+- **Cakupan yang Selesai:**
+  - **Penghapusan Form & Controller:**
+    - Menghapus seluruh elemen formulir: field Nama, Kesan, Pesan, tombol kirim, validasi input, state `_isSaving`, serta seluruh controller terkait dari `lib/features/tools/feedback_page.dart`.
+  - **Penyimpanan Terpusat & Abstraksi Read-Only Repository:**
+    - Membuat model dan data konstan di `lib/data/static/team_feedback.dart`:
+      1. **Najmah Cleosa** (NIM: 124240104) — Lead Developer & Architect
+      2. **Melanie Bunga Chintya Pawesty** (NIM: 124240164) — UI/UX & Frontend Developer
+      3. **Naftali Margareta** (NIM: 124240119) — Feature & QA Developer
+    - Menyederhanakan `FeedbackRepository` di `lib/data/repositories/feedback_repository.dart` menjadi antarmuka murni read-only (`Future<List<TeamFeedback>> getAll();` tanpa metode `save()`).
+    - Membuat implementasi `TeamFeedbackRepository` yang membaca list konstan `teamFeedbacks`.
+    - Menyesuaikan `FakeFeedbackRepository` dan `LocalFeedbackRepository` agar konsisten mengembalikan data tim konstan, serta menginjeksi `TeamFeedbackRepository` pada `lib/app/providers.dart`.
+  - **Desain & Tampilan Antarmuka Cozy Editorial:**
+    - Judul halaman AppBar: *"Kesan & Pesan"*.
+    - Banner pengantar botani: *"Kesan dan pesan dari kelompok kami untuk mata kuliah Pemrograman Aplikasi Mobile."*
+    - Tepat 3 kartu (`AppCard`), satu per anggota dengan urutan tetap:
+      - Avatar inisial (`NC`, `MB`, `NM`) dengan latar warna harmonis tema dan Semantics label jelas (`Avatar ${item.name}`).
+      - Nama anggota dengan tipografi Fraunces SemiBold (`AppText.cardHeading`).
+      - Badge identitas NIM (`NIM: ...`) dan peran pengembang.
+      - Pembatas halus (`Divider`).
+      - Bagian **Kesan**: ikon senyum ramah, label berbobot tebal, dan teks kesan membungkus penuh tanpa terpotong (`softWrap: true`).
+      - Bagian **Pesan**: ikon lampu ide, label berbobot tebal, dan teks saran membungkus penuh tanpa terpotong.
+    - Tanpa tombol tambah/edit/hapus/simpan. Tampilan responsif pada tema gelap (Dark Mode), layar compact 360×640 px, dan skala teks 1.3.
+  - **Pengecualian Tabel `feedbacks` dari Sinkronisasi (PRD §8.3):**
+    - Menghapus langkah sinkronisasi tabel `feedbacks` dari `pushPending`, `pullAll`, dan perhitungan pending count di `lib/core/services/sync_service.dart`.
+    - Urutan sinkronisasi tabel yang disinkronkan tetap konsisten: `user_books` -> `reading_sessions` -> `ledger_blocks` -> `game_scores`.
+    - Struktur tabel `feedbacks` di SQLite dan Supabase tetap dipertahankan tanpa perubahan skema berisiko.
+  - **Penghapusan Fallback ID Palsu pada Seluruh Repository Mode Nyata:**
+    - Menghapus seluruh fallback `'default_user'`, `'demo'`, dan `'demo_user'` di `search_book_detail_page.dart`, `deepseek_chat_repository.dart`, `gemini_chat_repository.dart`, dan `local_repositories.dart`.
+    - Jika pengguna mengakses fitur data pribadi tanpa sesi login terautentikasi (UUID valid RFC 4122), repository melempar error terkontrol `StateError('NO_AUTHENTICATED_USER')` dan antarmuka menampilkan pesan SnackBar untuk masuk ke akun.
+  - **Pembaruan Menu Tools Page:**
+    - Deskripsi kartu menu Kesan & Pesan pada `lib/features/tools/tools_page.dart` diperbarui menjadi *"Baca kesan dan pesan dari tim kami"*.
+  - **Pengujian Lengkap:**
+    - `test/fase_s7_test.dart` diperbarui: menguji isolasi data pribadi pada repository nyata, penolakan fallback palsu, verifikasi `TeamFeedbackRepository`, pengecualian `feedbacks` dari `SyncService`, ketiadaan form/TextField, rendering tepat 3 kartu tim dengan nama & teks lengkap, kesamaan tampilan untuk multi-akun/anonim, bebas overflow di 360×640 skala teks 1.3, dan verifikasi Dark Mode.
+    - Penyesuaian test suite terkait: `fase_b4_test.dart`, `fase_b7_test.dart`, `fase_u4d_test.dart`, `fase_u5_test.dart`, `fase_a5_tools_test.dart`, `fase_b1_test.dart`.
+
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (100% bersih).
+  - `flutter test test/fase_s7_test.dart`: **12/12 tests passed** (100% lolos).
+  - `flutter test`: **318/318 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md` (Penyimpangan PRD §7.7.1 & §8.3).
 
 

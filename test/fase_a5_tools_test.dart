@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:storyloka/core/services/time_converter_service.dart';
 import 'package:storyloka/data/models/chat_message.dart';
-import 'package:storyloka/data/models/feedback_entry.dart';
 import 'package:storyloka/data/models/game_score.dart';
 import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
 import 'package:storyloka/features/tools/currency_converter_page.dart';
@@ -113,34 +112,13 @@ void main() {
     });
   });
 
-  group('Fase A5: FakeFeedbackRepository — PRD §7.7.1', () {
-    test('Simpan feedback dan ambil daftar terurut terbaru di atas', () async {
+  group('Fase A5: FakeFeedbackRepository — PRD §7.7.1 & S7 (Read-Only)', () {
+    test('Ambil daftar kesan & pesan tim tetap', () async {
       final repo = FakeFeedbackRepository();
-
-      final e1 = FeedbackEntry(
-        id: '1',
-        userId: 'u1',
-        name: 'Andi',
-        impression: 'Keren',
-        suggestion: 'Tingkatkan lagi',
-        createdAt: DateTime(2026, 1, 1),
-      );
-      final e2 = FeedbackEntry(
-        id: '2',
-        userId: 'u2',
-        name: 'Budi',
-        impression: 'Sangat bagus',
-        suggestion: 'Lengkap',
-        createdAt: DateTime(2026, 1, 2),
-      );
-
-      await repo.save(e1);
-      await repo.save(e2);
-
       final list = await repo.getAll();
-      expect(list.length, 2);
-      expect(list.first.name, 'Budi'); // terbaru di atas
-      expect(list.last.name, 'Andi');
+      expect(list.length, 3);
+      expect(list.first.name, 'Najmah Cleosa');
+      expect(list.last.name, 'Naftali Margareta');
     });
   });
 
