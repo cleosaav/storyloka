@@ -167,45 +167,52 @@ class AppChip extends StatelessWidget {
         ? AppColors.white
         : (isDark ? AppColors.inkDark : AppColors.ink);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSpacing.radius18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          constraints: const BoxConstraints(minHeight: 34),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.m,
-            vertical: AppSpacing.xs,
-          ),
-          decoration: BoxDecoration(
-            color: isSelected ? selectedBg : unselectedBg,
-            borderRadius: BorderRadius.circular(AppSpacing.radius18),
-            border: Border.all(
-              color: isSelected ? selectedBg : unselectedBorder,
-              width: 1.0,
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: 'Genre $label${isSelected ? ", terpilih" : ""}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppSpacing.radius18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.m,
+              vertical: AppSpacing.xs,
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: AppSpacing.iconS,
-                  color: textColor,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  style: AppText.button(color: textColor),
-                  textAlign: TextAlign.center,
-                ),
+            decoration: BoxDecoration(
+              color: isSelected ? selectedBg : unselectedBg,
+              borderRadius: BorderRadius.circular(AppSpacing.radius18),
+              border: Border.all(
+                color: isSelected ? selectedBg : unselectedBorder,
+                width: 1.0,
               ),
-            ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    size: AppSpacing.iconS,
+                    color: textColor,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    style: AppText.button(color: textColor),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -253,14 +260,17 @@ class FilterTabs extends StatelessWidget {
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
                 ),
-                child: Text(
-                  tabs[index],
-                  style: AppText.button(
-                    color: isSelected
-                        ? AppColors.white
-                        : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
-                  ).copyWith(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    tabs[index],
+                    style: AppText.button(
+                      color: isSelected
+                          ? AppColors.white
+                          : (isDark ? AppColors.mutedDark : AppColors.mutedGray),
+                    ).copyWith(
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    ),
                   ),
                 ),
               ),

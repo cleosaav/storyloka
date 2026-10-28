@@ -7,8 +7,8 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 ## Ringkasan Progres
 
 - **Tahap saat ini:** Tahap Rilis Produksi & Finalisasi — Selesai
-- **Fase terakhir selesai:** Finalisasi Versi Rilis Murni, Eliminasi Mode Demo, Konfigurasi Android Release (Keystore/Signing, Proguard/R8 & Manifest Hardening)
-- **Status keseluruhan:** Seluruh fase PRD (A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5) serta eliminasi kode demo dari jalur produksi telah tuntas. Kode `lib/` 100% bebas issue (`flutter analyze`), dan seluruh 355 unit & widget test lulus (100%).
+- **Fase terakhir selesai:** Tambahan Chip Genre pada Discover Books (AddBookPage), Caching 30 Menit, Race Condition Guard, Full Responsive & Overflow Fix
+- **Status keseluruhan:** Seluruh fase PRD (A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5) serta fitur Chip Genre pada Discover Books tuntas. Kode `lib/` 100% bebas issue (`flutter analyze`), dan seluruh rangkaian test lolos (100%).
 
 ---
 

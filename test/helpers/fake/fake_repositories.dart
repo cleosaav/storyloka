@@ -355,6 +355,9 @@ class FakeBookSearchRepository implements BookSearchRepository {
           return b.authors?.toLowerCase().contains(q) ?? false;
         case 'isbn':
           return b.isbn?.contains(q) ?? false;
+        case 'subject':
+          return (b.genre?.toLowerCase().contains(q) ?? false) ||
+              b.title.toLowerCase().contains(q);
         default:
           return b.title.toLowerCase().contains(q);
       }
