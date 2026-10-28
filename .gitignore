@@ -57,3 +57,8 @@ app.*.map.json
 .env
 *.env
 
+# Android Keystore and signing keys
+key.properties
+**/android/key.properties
+*.jks
+*.keystore

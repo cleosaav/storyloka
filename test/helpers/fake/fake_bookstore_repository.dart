@@ -1,5 +1,5 @@
-import '../../models/bookstore.dart';
-import '../bookstore_repository.dart';
+import 'package:storyloka/data/models/bookstore.dart';
+import 'package:storyloka/data/repositories/bookstore_repository.dart';
 
 /// Implementasi Fake BookstoreRepository untuk unit & widget testing — PRD §9.4 & Fase S6.
 class FakeBookstoreRepository implements BookstoreRepository {

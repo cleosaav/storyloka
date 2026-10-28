@@ -8,7 +8,6 @@ import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/book_widgets.dart';
-import '../../core/widgets/demo_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
 import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
@@ -109,12 +108,6 @@ class _HomePageState extends State<HomePage> {
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: AppSpacing.l),
-            child: Center(child: DemoModeChip()),
-          ),
-        ],
       ),
       body: ResponsiveBody(
         child: RefreshIndicator(

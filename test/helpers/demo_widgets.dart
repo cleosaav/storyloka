@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../app/providers.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_spacing.dart';
-import '../theme/app_text.dart';
+import 'package:storyloka/app/providers.dart';
+import 'package:storyloka/core/theme/app_colors.dart';
+import 'package:storyloka/core/theme/app_spacing.dart';
+import 'package:storyloka/core/theme/app_text.dart';
 
 /// Controller untuk simulasi kondisi testing di Demo Mode (hanya kDebugMode).
 /// PRD §13.0 aturan 6: DemoControls (bottom sheet dari Profile): ganti data berisi/kosong,
@@ -81,7 +81,7 @@ class DemoModeChip extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: const BoxDecoration(
-                color: AppColors.amberWarm,
+                color: Color(0xFFC07A15),
                 shape: BoxShape.circle,
               ),
             ),
@@ -89,7 +89,7 @@ class DemoModeChip extends StatelessWidget {
             Text(
               'Mode demo',
               style: AppText.caption(
-                color: AppColors.amberDark,
+                color: const Color(0xFF8A5300),
               ).copyWith(
                 fontWeight: FontWeight.w600,
               ),

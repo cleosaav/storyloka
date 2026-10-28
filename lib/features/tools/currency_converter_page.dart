@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -11,7 +10,6 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_dropdown.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../data/repositories/currency_repository.dart';
-import '../../app/providers.dart';
 
 // ─── Logika konversi murni (fungsi agar bisa dites) ──────────────────────────
 
@@ -155,9 +153,6 @@ class _CurrencyConverterPageState extends State<CurrencyConverterPage> {
       fmt = DateFormat('d MMM yyyy, HH:mm');
     }
     final formattedDate = fmt.format(_lastUpdated!);
-    if (kDebugMode && AppConfig.useFakeData) {
-      return 'Kurs contoh (mode demo) • $formattedDate';
-    }
     if (_isFromCache) {
       return 'Kurs tersimpan, mungkin tidak terbaru • $formattedDate';
     }

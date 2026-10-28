@@ -45,22 +45,22 @@ class SecureSessionStore {
     }
   }
 
-  /// Simpan session setelah login/register berhasil.
-  /// Parameter [mode] mencatat mode pembuat sesi ('real' atau 'fake') — Fase R1.
   Future<void> saveSession({
     required String token,
     required AppUser user,
-    String mode = 'real',
+    String? mode,
   }) async {
     await _write(_keyToken, token);
     await _write(_keyUser, jsonEncode(user.toJson()));
-    await _write(_keySessionMode, mode);
+    if (mode != null) {
+      await _write(_keySessionMode, mode);
+    } else {
+      await _write(_keySessionMode, 'real');
+    }
   }
 
-  /// Ambil mode pembuat sesi yang tersimpan ('real' atau 'fake').
-  Future<String?> getSessionMode() async {
-    return await _read(_keySessionMode);
-  }
+  /// Ambil mode sesi tersimpan (real / fake)
+  Future<String?> getSessionMode() async => await _read(_keySessionMode);
 
   /// Simpan pembaruan data pengguna ke session store.
   Future<void> saveUser(AppUser user) async {

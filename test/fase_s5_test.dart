@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +11,8 @@ import 'package:storyloka/core/theme/app_theme.dart';
 import 'package:storyloka/core/widgets/widgets.dart';
 import 'package:storyloka/data/models/ledger_block.dart';
 import 'package:storyloka/data/models/user_book.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/demo_widgets.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/ledger_repository.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';
 import 'package:storyloka/features/profile/reading_ledger_page.dart';
@@ -422,7 +422,7 @@ void main() {
       expect(blocksAfter.length, equals(1));
     });
 
-    testWidgets('8. Mode uji manipulasi kDebugMode mendeteksi kerusakan rantai saat ditekan',
+    testWidgets('8. Mode uji manipulasi debug tidak lagi ditampilkan pada antarmuka rilis',
         (tester) async {
       _setupLargeViewport(tester);
 
@@ -451,16 +451,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      if (kDebugMode) {
-        final tamperBtn = find.text('Ubah data blok (uji)');
-        expect(tamperBtn, findsOneWidget);
-
-        await tester.tap(tamperBtn);
-        await tester.pumpAndSettle();
-
-        // Manipulasi terdeteksi oleh sistem verifikasi
-        expect(find.textContaining('Tidak Valid'), findsWidgets);
-      }
+      // Tombol debug manipulasi dieliminasi demi kebersihan UI produksi
+      expect(find.text('Ubah data blok (uji)'), findsNothing);
+      expect(find.text('Pengujian Integritas (Debug)'), findsNothing);
     });
   });
 }

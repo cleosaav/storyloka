@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:storyloka/data/models/bookstore.dart';
 import 'package:storyloka/data/repositories/bookstore_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_bookstore_repository.dart';
+import 'helpers/fake/fake_bookstore_repository.dart';
 import 'package:storyloka/data/repositories/remote/overpass_bookstore_repository.dart';
 import 'package:storyloka/features/book_detail/widgets/mini_bookstore_map.dart';
 import 'package:storyloka/features/tools/bookstore_map/bookstore_map_page.dart';

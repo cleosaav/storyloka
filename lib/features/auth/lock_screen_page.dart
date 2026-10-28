@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -7,10 +6,9 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
-import '../../core/widgets/demo_widgets.dart';
 import 'auth_controller.dart';
 
-/// Halaman Lock Screen (Biometrik) — PRD §7.1 & §13.0 Fase A1 / B2.
+/// Halaman Lock Screen (Biometrik) — PRD §7.1.
 /// Muncul jika pengguna memiliki session aktif dan fitur biometrik diaktifkan.
 class LockScreenPage extends StatefulWidget {
   const LockScreenPage({super.key});
@@ -24,29 +22,19 @@ class _LockScreenPageState extends State<LockScreenPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAutoBypass();
       _promptBiometric();
     });
   }
 
-  void _checkAutoBypass() {
-    final demo = context.read<DemoControls>();
-    if (demo.bypassBiometric) {
-      _handleUnlock();
-    }
-  }
-
   Future<void> _promptBiometric() async {
-    final demo = context.read<DemoControls>();
-    if (demo.bypassBiometric) return;
-
     final bioService = context.read<BiometricService?>();
     if (bioService == null) return;
 
     final canAuth = await bioService.canAuthenticate();
     if (canAuth) {
       final success = await bioService.authenticate(
-        localizedReason: 'Sentuh sensor biometrik untuk melanjutkan membaca di StoryLoka',
+        localizedReason:
+            'Sentuh sensor biometrik untuk melanjutkan membaca di StoryLoka',
       );
       if (success && mounted) {
         _handleUnlock();
@@ -80,12 +68,6 @@ class _LockScreenPageState extends State<LockScreenPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: AppSpacing.l),
-            child: Center(child: DemoModeChip()),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Center(
@@ -103,7 +85,8 @@ class _LockScreenPageState extends State<LockScreenPage> {
 
                   // Lingkaran Avatar / Icon Kunci
                   Semantics(
-                    label: 'Pindai sidik jari atau biometrik untuk membuka kunci',
+                    label:
+                        'Pindai sidik jari atau biometrik untuk membuka kunci',
                     button: true,
                     child: GestureDetector(
                       onTap: _promptBiometric,
@@ -130,76 +113,61 @@ class _LockScreenPageState extends State<LockScreenPage> {
                       ),
                     ),
                   ),
-              const SizedBox(height: AppSpacing.xl),
+                  const SizedBox(height: AppSpacing.xl),
 
-              // Sapaan Editorial
-              Text(
-                'Selamat Datang Kembali,',
-                style: AppText.sectionHeading(
-                  color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                userName,
-                style: AppText.pageHeading(
-                  color: isDark ? AppColors.inkDark : AppColors.ink,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.s),
-              Text(
-                'Aplikasi terkunci. Sentuh sensor biometrik untuk melanjutkan membaca.',
-                style: AppText.body(
-                  color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: AppSpacing.xxl),
-
-              // Tombol Simulasi Biometrik (Hanya di mode demo — PRD §13.0 Fase A1)
-              if (kDebugMode) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: PrimaryButton(
-                    label: 'Simulasi Biometrik (Demo)',
-                    icon: Icons.fingerprint_rounded,
-                    onPressed: _handleUnlock,
+                  // Sapaan Editorial
+                  Text(
+                    'Selamat Datang Kembali,',
+                    style: AppText.sectionHeading(
+                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: AppSpacing.m),
-              ],
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    userName,
+                    style: AppText.pageHeading(
+                      color: isDark ? AppColors.inkDark : AppColors.ink,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.s),
+                  Text(
+                    'Aplikasi terkunci. Sentuh sensor biometrik untuk melanjutkan membaca.',
+                    style: AppText.body(
+                      color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
 
-              // Tombol Coba Lagi
-              SizedBox(
-                width: double.infinity,
-                child: SecondaryButton(
-                  label: 'Coba Lagi',
-                  icon: Icons.refresh_rounded,
-                  onPressed: () async {
-                    await _promptBiometric();
-                  },
-                ),
-              ),
-              const SizedBox(height: AppSpacing.l),
+                  const SizedBox(height: AppSpacing.xxl),
 
-              // Tombol Login dengan Password (menghapus session lokal -> /login)
-              TertiaryButton(
-                label: 'Login dengan password',
-                color: isDark
-                    ? AppColors.mutedDark
-                    : AppColors.mutedGray,
-                onPressed: _handlePasswordFallback,
+                  // Tombol Buka Kunci Biometrik Utama
+                  SizedBox(
+                    width: double.infinity,
+                    child: PrimaryButton(
+                      label: 'Buka Kunci Biometrik',
+                      icon: Icons.fingerprint_rounded,
+                      onPressed: () async {
+                        await _promptBiometric();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.l),
+
+                  // Tombol Login dengan Password (menghapus session lokal -> /login)
+                  TertiaryButton(
+                    label: 'Login dengan password',
+                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
+                    onPressed: _handlePasswordFallback,
+                  ),
+                  const SizedBox(height: AppSpacing.m),
+                ],
               ),
-              const SizedBox(height: AppSpacing.m),
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  ),
-);
-}
+    );
+  }
 }

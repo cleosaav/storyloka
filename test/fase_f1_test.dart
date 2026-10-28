@@ -17,7 +17,7 @@ import 'package:storyloka/core/services/ledger_service.dart';
 import 'package:storyloka/core/services/light_sensor_service.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/services/sync_service.dart';
-import 'package:storyloka/core/widgets/demo_widgets.dart';
+import 'helpers/demo_widgets.dart';
 import 'package:storyloka/data/database_helper.dart';
 import 'package:storyloka/data/models/app_user.dart';
 import 'package:storyloka/data/models/ledger_block.dart';
@@ -27,7 +27,7 @@ import 'package:storyloka/data/repositories/ledger_repository.dart';
 import 'package:storyloka/data/repositories/library_repository.dart';
 import 'package:storyloka/data/repositories/profile_repository.dart';
 import 'package:storyloka/data/repositories/reading_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/local/local_repositories.dart';
 import 'package:storyloka/data/repositories/supabase/supabase_repositories.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';
@@ -1006,11 +1006,11 @@ class _MockSessionStore extends SecureSessionStore {
   Future<void> saveSession({
     required String token,
     required AppUser user,
-    String mode = 'real',
+    String? mode = 'real',
   }) async {
     _data['token'] = token;
     _data['user'] = jsonEncode(user.toJson());
-    _data['mode'] = mode;
+    _data['mode'] = mode ?? 'real';
   }
 
   @override

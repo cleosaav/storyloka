@@ -6,7 +6,7 @@ import 'package:storyloka/core/services/ledger_service.dart';
 import 'package:storyloka/data/models/ledger_block.dart';
 import 'package:storyloka/data/models/user_book.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/ledger_repository.dart';
 import 'package:storyloka/data/repositories/library_repository.dart';
 import 'package:storyloka/data/repositories/reading_repository.dart';

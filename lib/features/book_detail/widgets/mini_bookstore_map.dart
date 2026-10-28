@@ -11,7 +11,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../data/models/bookstore.dart';
 import '../../../data/repositories/bookstore_repository.dart';
-import '../../../data/repositories/fake/fake_bookstore_repository.dart';
 
 /// Widget pratinjau peta kecil toko buku terdekat untuk halaman detail buku.
 /// Menampilkan OpenStreetMap dengan titik lokasi pengguna dan toko buku terdekat.
@@ -79,12 +78,17 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
 
     _center = userPos;
 
-    BookstoreRepository repo;
+    BookstoreRepository? repo;
     try {
       repo = context.read<BookstoreRepository>();
     } catch (_) {
-      // Fallback aman untuk widget testing atau jika provider belum terinjeksi
-      repo = FakeBookstoreRepository();
+      repo = null;
+    }
+
+    if (repo == null) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      return;
     }
 
     try {

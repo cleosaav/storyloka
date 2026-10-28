@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:storyloka/app/providers.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
-import 'package:storyloka/core/widgets/demo_widgets.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/demo_widgets.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';
 
 void main() {

@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:storyloka/core/services/time_converter_service.dart';
 import 'package:storyloka/data/models/chat_message.dart';
 import 'package:storyloka/data/models/game_score.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/features/tools/currency_converter_page.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 

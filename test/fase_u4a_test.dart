@@ -7,12 +7,12 @@ import 'package:storyloka/app/providers.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/theme/app_theme.dart';
 import 'package:storyloka/core/widgets/app_button.dart';
-import 'package:storyloka/core/widgets/demo_widgets.dart';
+import 'helpers/demo_widgets.dart';
 import 'package:storyloka/data/models/app_user.dart';
 import 'package:storyloka/data/models/user_book.dart';
 import 'package:storyloka/data/repositories/auth_repository.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/library_repository.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';
 import 'package:storyloka/features/auth/login_page.dart';
@@ -80,13 +80,12 @@ void main() {
   });
 
   group('Fase U4a Tests', () {
-    testWidgets('1a. LoginPage mengisi kredensial & menampilkan catatan demo di mode fake', (tester) async {
+    testWidgets('1a. LoginPage menampilkan form login bersih tanpa elemen demo', (tester) async {
       await tester.pumpWidget(_buildTestWrapper(child: const LoginPage()));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(TextField, 'reader@storyloka.app'), findsOneWidget);
-      expect(find.widgetWithText(TextField, 'password123'), findsOneWidget);
-      expect(find.text('Catatan Mode Demo (Fase A1)'), findsOneWidget);
+      expect(find.text('Catatan Mode Demo (Fase A1)'), findsNothing);
+      expect(find.text('Mode demo'), findsNothing);
     });
 
     testWidgets('1b. LoginPage mengosongkan kredensial & menyembunyikan catatan demo di mode nyata', (tester) async {

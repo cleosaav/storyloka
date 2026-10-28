@@ -7,11 +7,11 @@ import 'package:uuid/uuid.dart';
 
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/services/sync_service.dart';
-import 'package:storyloka/core/widgets/demo_widgets.dart';
+import 'helpers/demo_widgets.dart';
 import 'package:storyloka/data/database_helper.dart';
 import 'package:storyloka/data/models/app_user.dart';
 import 'package:storyloka/data/models/game_score.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/feedback_repository.dart';
 import 'package:storyloka/data/repositories/local/local_repositories.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';

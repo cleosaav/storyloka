@@ -131,44 +131,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
     await _loadBlocks();
   }
 
-  void _tamperBlockForTesting() {
-    if (_blocks.isEmpty) return;
-
-    // Cari blok non-genesis untuk dimanipulasi, atau genesis jika hanya ada satu
-    final targetIndex = _blocks.length > 1 ? 1 : 0;
-    final original = _blocks[targetIndex];
-
-    final tamperedData = Map<String, dynamic>.from(original.dataJson);
-    tamperedData['tampered'] = true;
-    tamperedData['title'] = '${tamperedData['title'] ?? 'Genesis'} [Dimanipulasi]';
-
-    final tamperedBlock = LedgerBlock(
-      id: original.id,
-      userId: original.userId,
-      blockIndex: original.blockIndex,
-      timestamp: original.timestamp,
-      dataJson: tamperedData,
-      previousHash: original.previousHash,
-      nonce: original.nonce,
-      hash: original.hash, // Hash lama tidak cocok dengan dataJson baru!
-      createdAt: original.createdAt,
-      syncStatus: original.syncStatus,
-    );
-
-    setState(() {
-      _blocks = List<LedgerBlock>.from(_blocks)..[targetIndex] = tamperedBlock;
-      // Langsung verifikasi untuk membuktikan sistem mendeteksi manipulasi
-      _verificationResult = LedgerService.verifyChain(_blocks);
-      _lastVerificationTime = DateTime.now();
-    });
-
-    AppSnackBar.show(
-      context,
-      message: 'Data blok #$targetIndex dimanipulasi. Verifikasi otomatis mendeteksi kerusakan rantai.',
-      type: SnackBarType.info,
-    );
-  }
-
   void _showAboutLedgerSheet(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -809,64 +771,9 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
           ),
         ),
 
-        // 4. Mode Pengujian Manipulasi (Hanya kDebugMode) — Fase S5
-        if (kDebugMode && _blocks.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.m),
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.m),
-            decoration: BoxDecoration(
-              color: AppColors.softApricot.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-              border: Border.all(color: AppColors.softApricot.withValues(alpha: 0.5)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.bug_report_outlined, size: 18, color: AppColors.softApricot),
-                    const SizedBox(width: AppSpacing.s),
-                    Text(
-                      'Pengujian Integritas (Debug)',
-                      style: AppText.caption(color: AppColors.softApricot).copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Uji keandalan verifikasi dengan memanipulasi data salah satu blok dalam memori untuk membuktikan sistem mendeteksi kerusakan rantai.',
-                  style: AppText.caption(
-                    color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.s),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Ubah data blok (uji)',
-                        icon: Icons.edit_note_rounded,
-                        onPressed: _tamperBlockForTesting,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.s),
-                    IconButton(
-                      icon: const Icon(Icons.restore_rounded),
-                      tooltip: 'Pulihkan data asli',
-                      onPressed: _loadBlocks,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-
         const SizedBox(height: AppSpacing.l),
 
-        // 5. Section Heading
+        // 4. Section Heading
         Text(
           'Daftar Blok Rantai',
           style: AppText.sectionHeading(

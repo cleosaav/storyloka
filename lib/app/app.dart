@@ -6,8 +6,6 @@ import '../core/config/env.dart';
 import '../core/services/sync_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/config_error_page.dart';
-import '../data/repositories/auth_repository.dart';
-import '../data/repositories/fake/fake_repositories.dart';
 import '../features/auth/auth_controller.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -62,11 +60,9 @@ class _StoryLokaAppState extends State<StoryLokaApp> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final themeController = context.watch<ThemeController>();
-    final authRepo = context.watch<AuthRepository?>();
-    final isFakeMode = authRepo is FakeAuthRepository;
 
-    // 1. Jika mode nyata tetapi konfigurasi .env tidak valid -> ConfigErrorPage (Fase R1)
-    if (!isFakeMode && !AppConfig.useFakeData && !Env.isConfigValid) {
+    // 1. Jika konfigurasi .env tidak valid -> ConfigErrorPage (Fase R1)
+    if (!Env.isConfigValid) {
       return MaterialApp(
         title: 'StoryLoka',
         debugShowCheckedModeBanner: false,
@@ -96,7 +92,7 @@ class _StoryLokaAppState extends State<StoryLokaApp> with WidgetsBindingObserver
     }
 
     // 2. Jika inisialisasi Supabase gagal -> Layar error dengan tombol Coba Lagi (Fase R1)
-    if (!isFakeMode && !AppConfig.useFakeData && StartupStatus.instance.isSupabaseFailed) {
+    if (StartupStatus.instance.isSupabaseFailed) {
       return MaterialApp(
         title: 'StoryLoka',
         debugShowCheckedModeBanner: false,

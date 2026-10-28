@@ -6,9 +6,9 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 
 ## Ringkasan Progres
 
-- **Tahap saat ini:** Tahap F (Perbaikan Bug Fungsional, Keamanan & Dokumentasi) — Selesai
-- **Fase terakhir selesai:** Fase F5 & Perbaikan Bug Sinkronisasi UUID
-- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5 serta penanganan integritas UUID & sinkronisasi Supabase telah selesai. Seluruh 355 tes lulus (100%).
+- **Tahap saat ini:** Tahap Rilis Produksi & Finalisasi — Selesai
+- **Fase terakhir selesai:** Finalisasi Versi Rilis Murni, Eliminasi Mode Demo, Konfigurasi Android Release (Keystore/Signing, Proguard/R8 & Manifest Hardening)
+- **Status keseluruhan:** Seluruh fase PRD (A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5) serta eliminasi kode demo dari jalur produksi telah tuntas. Kode `lib/` 100% bebas issue (`flutter analyze`), dan seluruh 355 unit & widget test lulus (100%).
 
 ---
 

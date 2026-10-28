@@ -726,7 +726,15 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
    - **Keputusan:** Pada `AuthController.logout`, jika logout dipanggil tanpa dialog peringatan (atau saat data belum sempat terdorong ke remote) dan masih terdapat baris berstatus `pending` atau `error`, pemanggilan `clearUserData(userId)` dilewati sehingga data lokal tetap utuh dan terisolasi per `user_id`. Jika pengguna menyetujui peringatan konfirmasi logout di dialog `ProfilePage`, `clearUserData` dijalankan sesuai PRD §7.8.
    - **Alasan:** Melindungi data pengguna dari kehilangan saat logout offline atau saat push gagal.
 
+---
 
+## Finalisasi Versi Rilis & Eliminasi Kode Demo
 
+1. **Pemisahan Total Kode Demo & Mock ke Test Helpers (`test/helpers/`)**
+   - **Keputusan:** Memindahkan seluruh artefak palsu (`Fake...Repository`, `DemoControls`, `DemoModeChip`) keluar dari `lib/` ke dalam direktori `test/helpers/`. Direktori produksi `lib/` kini murni hanya memuat arsitektur produksi (SQLite + Supabase + API nyata).
+   - **Alasan:** Memastikan bundel rilis aplikasi tidak memuat kode dummy, mock, atau bypass keamanan yang dapat disalahgunakan atau memperbesar ukuran APK.
 
+2. **Hardening Android Manifest & Proguard R8**
+   - **Keputusan:** Mengonfigurasi `android:allowBackup="false"` dan `android:fullBackupContent="false"` pada `AndroidManifest.xml` serta menetapkan hardware features kamera/lokasi sebagai `required="false"`. Menambahkan `proguard-rules.pro` dengan keep rules untuk Flutter wrapper, SQLite, background notification, geolocator, camera/scanner, dan secure storage. Mengaktifkan `isMinifyEnabled = true` dan `isShrinkResources = true` pada build release.
+   - **Alasan:** Mencegah ekstraksi database lokal atau secure preferences melalui ADB backup serta memastikan kompatibilitas runtime setelah obfuscation/tree-shaking R8.
 

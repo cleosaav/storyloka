@@ -6,7 +6,6 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_text_field.dart';
-import '../../core/widgets/demo_widgets.dart';
 import '../../core/widgets/responsive_body.dart';
 import 'auth_controller.dart';
 
@@ -124,12 +123,6 @@ class _RegisterPageState extends State<RegisterPage> {
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: AppSpacing.l),
-            child: Center(child: DemoModeChip()),
-          ),
-        ],
       ),
       body: ResponsiveBody(
         child: SingleChildScrollView(

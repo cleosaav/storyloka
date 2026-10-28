@@ -9,7 +9,7 @@ import 'package:storyloka/core/widgets/app_card.dart';
 import 'package:storyloka/core/widgets/app_dropdown.dart';
 import 'package:storyloka/core/services/time_converter_service.dart';
 import 'package:storyloka/data/repositories/currency_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/features/tools/currency_converter_page.dart';
 import 'package:storyloka/features/tools/time_converter_page.dart';
 

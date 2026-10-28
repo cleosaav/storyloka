@@ -136,7 +136,7 @@ class LocalLibraryRepository implements LibraryRepository {
     // Jika id kosong atau berupa angka murni (microseconds timestamp seperti bug lama), buat UUID v4 baru.
     final isMicrosecondsOrEmpty = book.id.trim().isEmpty || int.tryParse(book.id.trim()) != null;
     final resolvedBookId = isMicrosecondsOrEmpty ? _uuid.v4() : book.id;
-    final resolvedUserId = (book.userId.isEmpty || book.userId == 'demo_user') ? userId : book.userId;
+    final resolvedUserId = book.userId.isEmpty ? userId : book.userId;
 
     final targetBook = UserBook(
       id: resolvedBookId,
@@ -348,7 +348,7 @@ class LocalReadingRepository implements ReadingRepository {
     final isMicrosecondsOrEmpty = session.id.trim().isEmpty || int.tryParse(session.id.trim()) != null;
     final resolvedSessionId = isMicrosecondsOrEmpty ? _uuid.v4() : session.id;
     final resolvedUserId =
-        (session.userId.isEmpty || session.userId == 'demo_user') ? userId : session.userId;
+        session.userId.isEmpty ? userId : session.userId;
 
     final sessionToSave = ReadingSession(
       id: resolvedSessionId,
@@ -450,7 +450,7 @@ class LocalLedgerRepository implements LedgerRepository {
     final isMicrosecondsOrEmpty = block.id.trim().isEmpty || int.tryParse(block.id.trim()) != null;
     final resolvedBlockId = isMicrosecondsOrEmpty ? _uuid.v4() : block.id;
     final resolvedUserId =
-        (block.userId.isEmpty || block.userId == 'demo_user') ? userId : block.userId;
+        block.userId.isEmpty ? userId : block.userId;
 
     final blockToSave = LedgerBlock(
       id: resolvedBlockId,
@@ -552,7 +552,7 @@ class LocalScoreRepository implements ScoreRepository {
     final isMicrosecondsOrEmpty = score.id.trim().isEmpty || int.tryParse(score.id.trim()) != null;
     final resolvedScoreId = isMicrosecondsOrEmpty ? _uuid.v4() : score.id;
     final resolvedUserId =
-        (score.userId.isEmpty || score.userId == 'demo_user') ? userId : score.userId;
+        score.userId.isEmpty ? userId : score.userId;
 
     final scoreToSave = GameScore(
       id: resolvedScoreId,
@@ -657,7 +657,7 @@ class LocalChatRepository implements ChatRepository {
     final db = await dbHelper.database;
     final userId = await _getUserId();
 
-    final msgToSave = message.userId.isEmpty || message.userId == 'demo_user'
+    final msgToSave = message.userId.isEmpty
         ? ChatMessage(
             id: message.id.isEmpty ? _uuid.v4() : message.id,
             userId: userId,

@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../app/providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text.dart';
@@ -224,21 +222,6 @@ class _AiChatPageState extends State<AiChatPage> {
       ),
       body: Column(
         children: [
-          // Demo banner (hanya tampil jika kDebugMode && useFakeData)
-          if (kDebugMode && AppConfig.useFakeData)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
-              color: AppColors.sageGreen.withValues(alpha: 0.15),
-              child: Text(
-                'Mode Demo — Balasan tidak menggunakan AI nyata',
-                style: AppText.caption(
-                  color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                ).copyWith(fontWeight: FontWeight.w600),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
           // Daftar pesan / empty state
           Expanded(
             child: _isLoading

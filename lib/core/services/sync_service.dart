@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/database_helper.dart';
 import '../../data/repositories/local/local_repositories.dart';
@@ -306,11 +307,7 @@ class SyncService extends ChangeNotifier {
   /// user_books → reading_sessions → ledger_blocks → game_scores
   Future<void> pushPending({String? userId}) async {
     final targetUserId = userId ?? await _resolveCurrentUserId();
-    final isFakeId = targetUserId == 'demo_user' ||
-        targetUserId == 'default_user' ||
-        targetUserId == 'guest' ||
-        targetUserId == 'demo';
-    if (targetUserId == null || targetUserId.isEmpty || isFakeId) {
+    if (targetUserId == null || targetUserId.isEmpty) {
       return;
     }
     if (remoteSource is SupabaseSyncRemoteSource && !isValidUuid(targetUserId)) {
@@ -433,9 +430,69 @@ class SyncService extends ChangeNotifier {
 
     if (pendingRows.isEmpty) return;
 
+    final uuidRegex = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    const uuidGen = Uuid();
+
     for (final row in pendingRows) {
       final payload = transform(row);
-      final id = row['id'] as String;
+      var id = row['id'] as String;
+
+      // Auto-heal ID non-UUID sebelum dikirim ke Supabase Postgres UUID column (22P02)
+      if (!uuidRegex.hasMatch(id)) {
+        final newId = uuidGen.v4();
+        await db.update(
+          tableName,
+          {'id': newId},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        if (tableName == 'user_books') {
+          await db.update(
+            'reading_sessions',
+            {'user_book_id': newId},
+            where: 'user_book_id = ?',
+            whereArgs: [id],
+          );
+        }
+        id = newId;
+        payload['id'] = newId;
+      }
+
+      // Auto-heal user_book_id non-UUID pada reading_sessions jika merujuk ke id lama
+      if (tableName == 'reading_sessions') {
+        final ubId = payload['user_book_id']?.toString() ?? '';
+        if (ubId.isNotEmpty && !uuidRegex.hasMatch(ubId)) {
+          // Cek apakah ada user_books yang cocok
+          final ubRow = await db.query(
+            'user_books',
+            columns: ['id'],
+            where: 'id = ?',
+            whereArgs: [ubId],
+          );
+          if (ubRow.isEmpty) {
+            // Jika user_books tidak ada dengan ID lama, skip atau jangan kirim foreign key invalid
+            final fallbackUb = await db.query(
+              'user_books',
+              columns: ['id'],
+              where: 'user_id = ?',
+              whereArgs: [userId],
+              limit: 1,
+            );
+            if (fallbackUb.isNotEmpty) {
+              final healedUbId = fallbackUb.first['id'] as String;
+              await db.update(
+                'reading_sessions',
+                {'user_book_id': healedUbId},
+                where: 'id = ?',
+                whereArgs: [id],
+              );
+              payload['user_book_id'] = healedUbId;
+            }
+          }
+        }
+      }
 
       try {
         // Upsert ke Remote Source dengan onConflict: 'id'
@@ -613,11 +670,7 @@ class SyncService extends ChangeNotifier {
   /// Last-write-wins berdasarkan updated_at untuk user_books.
   /// Append-only untuk tabel lainnya.
   Future<void> pullAll(String userId) async {
-    final isFakeId = userId == 'demo_user' ||
-        userId == 'default_user' ||
-        userId == 'guest' ||
-        userId == 'demo';
-    if (userId.isEmpty || isFakeId) {
+    if (userId.isEmpty) {
       return;
     }
     if (remoteSource is SupabaseSyncRemoteSource && !isValidUuid(userId)) {
@@ -831,7 +884,7 @@ class SyncService extends ChangeNotifier {
   /// Sinkronisasi saat aplikasi resume ke foreground — PRD §8.3.
   Future<void> syncOnResume() async {
     final userId = await _resolveCurrentUserId();
-    if (userId != null && userId.isNotEmpty && userId != 'demo_user') {
+    if (userId != null && userId.isNotEmpty) {
       await pushPending(userId: userId);
       await pullAll(userId);
     }
@@ -840,7 +893,7 @@ class SyncService extends ChangeNotifier {
   /// Sinkronisasi sebelum logout — PRD §8.3.
   /// Mendorong pending changes terakhir sebelum database lokal dibersihkan.
   Future<void> syncBeforeLogout(String userId) async {
-    if (userId.isEmpty || userId == 'demo_user') return;
+    if (userId.isEmpty) return;
     try {
       await pushPending(userId: userId).timeout(const Duration(seconds: 4));
     } catch (e) {

@@ -1,20 +1,15 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../../app/providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_button.dart';
-import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_text_field.dart';
-import '../../core/widgets/demo_widgets.dart';
 import '../../core/widgets/responsive_body.dart';
-import '../../data/repositories/fake/fake_repositories.dart';
 import 'auth_controller.dart';
 
-/// Halaman Login — PRD §7.1 & §13.0 Fase A1.
+/// Halaman Login — PRD §7.1.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -25,24 +20,9 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _credentialsInitialized = false;
 
   String? _emailError;
   String? _passwordError;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_credentialsInitialized) {
-      _credentialsInitialized = true;
-      final auth = context.read<AuthController>();
-      final isFake = AppConfig.useFakeData || (auth.authRepository is FakeAuthRepository);
-      if (isFake) {
-        _emailController.text = 'reader@storyloka.app';
-        _passwordController.text = 'password123';
-      }
-    }
-  }
 
   @override
   void dispose() {
@@ -75,6 +55,9 @@ class _LoginPageState extends State<LoginPage> {
     if (password.isEmpty) {
       _passwordError = 'Password wajib diisi';
       isValid = false;
+    } else if (password.length < 8) {
+      _passwordError = 'Password minimal 8 karakter';
+      isValid = false;
     }
 
     setState(() {});
@@ -98,7 +81,6 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final auth = context.watch<AuthController>();
-    final isFake = AppConfig.useFakeData || (auth.authRepository is FakeAuthRepository);
 
     return Scaffold(
       appBar: AppBar(
@@ -108,12 +90,6 @@ class _LoginPageState extends State<LoginPage> {
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: AppSpacing.l),
-            child: Center(child: DemoModeChip()),
-          ),
-        ],
       ),
       body: ResponsiveBody(
         child: SingleChildScrollView(
@@ -247,46 +223,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.l),
-
-              // Kartu bantuan mode demo (hanya tampil jika useFakeData && kDebugMode)
-              if (isFake && kDebugMode) ...[
-                const SizedBox(height: AppSpacing.l),
-                NotesCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline_rounded,
-                            size: AppSpacing.iconM,
-                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                          ),
-                          const SizedBox(width: AppSpacing.s),
-                          Expanded(
-                            child: Text(
-                              'Catatan Mode Demo (Fase A1)',
-                              style: AppText.caption(
-                                color: isDark ? AppColors.inkDark : AppColors.ink,
-                              ).copyWith(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        '• Masukkan email apa saja & password ≥ 8 karakter.\n'
-                        '• Password "wrong" untuk simulasi kredensial salah.\n'
-                        '• Email "taken@demo.com" untuk simulasi email terdaftar.',
-                        style: AppText.caption(
-                          color: isDark ? AppColors.inkDark : AppColors.ink,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),

@@ -2,25 +2,25 @@ import 'dart:math';
 
 import 'package:uuid/uuid.dart';
 
-import '../../models/app_user.dart';
-import '../../models/user_book.dart';
-import '../../models/reading_session.dart';
-import '../../models/ledger_block.dart';
-import '../../models/game_score.dart';
-import '../../models/chat_message.dart';
-import '../auth_repository.dart';
-import '../profile_repository.dart';
-import '../book_search_repository.dart';
-import '../library_repository.dart';
-import '../reading_repository.dart';
-import '../ledger_repository.dart';
-import '../feedback_repository.dart';
-import '../score_repository.dart';
-import '../../static/team_feedback.dart';
-import '../chat_repository.dart';
-import '../currency_repository.dart';
-import '../../../core/services/secure_session_store.dart';
-import '../../../core/widgets/demo_widgets.dart';
+import 'package:storyloka/data/models/app_user.dart';
+import 'package:storyloka/data/models/user_book.dart';
+import 'package:storyloka/data/models/reading_session.dart';
+import 'package:storyloka/data/models/ledger_block.dart';
+import 'package:storyloka/data/models/game_score.dart';
+import 'package:storyloka/data/models/chat_message.dart';
+import 'package:storyloka/data/repositories/auth_repository.dart';
+import 'package:storyloka/data/repositories/profile_repository.dart';
+import 'package:storyloka/data/repositories/book_search_repository.dart';
+import 'package:storyloka/data/repositories/library_repository.dart';
+import 'package:storyloka/data/repositories/reading_repository.dart';
+import 'package:storyloka/data/repositories/ledger_repository.dart';
+import 'package:storyloka/data/repositories/feedback_repository.dart';
+import 'package:storyloka/data/repositories/score_repository.dart';
+import 'package:storyloka/data/static/team_feedback.dart';
+import 'package:storyloka/data/repositories/chat_repository.dart';
+import 'package:storyloka/data/repositories/currency_repository.dart';
+import 'package:storyloka/core/services/secure_session_store.dart';
+import '../demo_widgets.dart';
 
 const _uuid = Uuid();
 
@@ -229,7 +229,6 @@ class FakeAuthRepository implements AuthRepository {
     await _sessionStore.saveSession(
       token: 'fake-token-${_uuid.v4()}',
       user: currentUser!,
-      mode: 'fake',
     );
 
     return currentUser!;
@@ -257,7 +256,6 @@ class FakeAuthRepository implements AuthRepository {
     await _sessionStore.saveSession(
       token: 'fake-token-${_uuid.v4()}',
       user: currentUser!,
-      mode: 'fake',
     );
 
     return currentUser!;

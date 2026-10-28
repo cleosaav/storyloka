@@ -1,24 +1,22 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import '../../app/providers.dart';
 import '../../core/services/ledger_service.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/services/secure_session_store.dart';
 import '../../core/services/sync_service.dart';
-import '../../core/widgets/demo_widgets.dart';
 import '../../data/database_helper.dart';
 import '../../data/models/app_user.dart';
 import '../../data/repositories/auth_repository.dart';
 
-/// Controller state autentikasi — PRD §7.1 & §13.0 Fase A1.
+/// Controller state autentikasi — PRD §7.1.
 /// Mengelola status login, sesi aman, lock screen biometrik,
 /// dan bertindak sebagai [Listenable] untuk redirect guard [GoRouter].
 class AuthController extends ChangeNotifier {
   final AuthRepository authRepository;
   final SecureSessionStore sessionStore;
-  final DemoControls demoControls;
   final LedgerService? ledgerService;
   final DatabaseHelper dbHelper;
+  final dynamic demoControls;
 
   AppUser? _currentUser;
   bool _isLoading = false;
@@ -30,9 +28,9 @@ class AuthController extends ChangeNotifier {
   AuthController({
     required this.authRepository,
     required this.sessionStore,
-    required this.demoControls,
     this.ledgerService,
     DatabaseHelper? dbHelper,
+    this.demoControls,
   }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
   AppUser? get currentUser => _currentUser;
@@ -58,23 +56,16 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // PRD §7.1 & Fase R1: Sesi tersimpan harus ditandai mode pembuatannya.
-      // Jika ditemukan sesi dari mode fake saat app berjalan nyata, hapus dan arahkan ke /login.
-      if (!AppConfig.useFakeData) {
-        final sessionMode = await sessionStore.getSessionMode();
-        if (sessionMode == 'fake') {
-          await sessionStore.clearSession();
-          _currentUser = null;
-          _isBiometricLocked = false;
-          _isInitialized = true;
-          _isLoading = false;
-          notifyListeners();
-          return;
-        }
-      }
-
-      if (demoControls.simulateSlowLatency) {
-        await Future.delayed(const Duration(seconds: 2));
+      // Keamanan Rilis (PRD §13.0 & Fase R1): Bersihkan sesi palsu jika sebelumnya pernah tersimpan
+      final sessionMode = await sessionStore.getSessionMode();
+      if (sessionMode == 'fake') {
+        await sessionStore.clearSession();
+        _currentUser = null;
+        _isBiometricLocked = false;
+        _isInitialized = true;
+        _isLoading = false;
+        notifyListeners();
+        return;
       }
 
       // Batas waktu 10 detik pada proses di splash (termasuk validate_session) — Fase R1
@@ -85,11 +76,7 @@ class AuthController extends ChangeNotifier {
       if (user != null) {
         _currentUser = user;
         final bioEnabled = await sessionStore.isBiometricEnabled();
-        if (bioEnabled && !demoControls.bypassBiometric) {
-          _isBiometricLocked = true;
-        } else {
-          _isBiometricLocked = false;
-        }
+        _isBiometricLocked = bioEnabled && (demoControls?.bypassBiometric != true);
         // Panggil pushPending SEBELUM pullAll agar data lokal terkirim terlebih dahulu
         try {
           await SyncService.instance.pushPending(userId: user.id);
@@ -123,7 +110,7 @@ class AuthController extends ChangeNotifier {
         // lanjut ke Home dengan sesi lokal dan validasi ulang di latar belakang.
         _currentUser = cachedUser;
         final bioEnabled = await sessionStore.isBiometricEnabled();
-        _isBiometricLocked = bioEnabled && !demoControls.bypassBiometric;
+        _isBiometricLocked = bioEnabled;
         _isInitialized = true;
         _hasSplashTimeout = false;
 
@@ -140,7 +127,7 @@ class AuthController extends ChangeNotifier {
       if (cachedUser != null && hasToken) {
         _currentUser = cachedUser;
         final bioEnabled = await sessionStore.isBiometricEnabled();
-        _isBiometricLocked = bioEnabled && !demoControls.bypassBiometric;
+        _isBiometricLocked = bioEnabled;
         _isInitialized = true;
         _hasSplashTimeout = false;
 
@@ -205,10 +192,6 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (demoControls.simulateNetworkError) {
-        throw Exception('NETWORK_ERROR');
-      }
-
       final user = await authRepository.login(email.trim(), password);
       _currentUser = user;
       _isBiometricLocked = false;
@@ -240,8 +223,6 @@ class AuthController extends ChangeNotifier {
         _errorMessage = 'Email atau password salah.';
       } else if (msg.contains('EMAIL_TAKEN') || msg.contains('Email sudah terdaftar')) {
         _errorMessage = 'Email sudah terdaftar.';
-      } else if (msg.contains('NETWORK_ERROR')) {
-        _errorMessage = 'Gagal terhubung ke jaringan (simulasi error).';
       } else if (msg.isNotEmpty) {
         _errorMessage = msg;
       } else {
@@ -265,10 +246,6 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (demoControls.simulateNetworkError) {
-        throw Exception('NETWORK_ERROR');
-      }
-
       final user = await authRepository.register(
         name.trim(),
         email.trim(),
@@ -302,8 +279,6 @@ class AuthController extends ChangeNotifier {
       final msg = e.toString().replaceFirst('Exception: ', '').trim();
       if (msg.contains('EMAIL_TAKEN') || msg.contains('Email sudah terdaftar')) {
         _errorMessage = 'Email sudah terdaftar. Silakan gunakan email lain atau masuk.';
-      } else if (msg.contains('NETWORK_ERROR')) {
-        _errorMessage = 'Gagal terhubung ke jaringan (simulasi error).';
       } else if (msg.isNotEmpty) {
         _errorMessage = msg;
       } else {

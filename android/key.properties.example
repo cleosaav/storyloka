@@ -1,0 +1,4 @@
+storePassword=storyloka_password
+keyPassword=storyloka_password
+keyAlias=storyloka
+storeFile=../storyloka-release-key.jks

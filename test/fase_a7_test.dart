@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:storyloka/app/providers.dart';
+import 'package:storyloka/core/config/env.dart';
 import 'package:storyloka/core/services/ledger_service.dart';
 import 'package:storyloka/core/services/secure_session_store.dart';
 import 'package:storyloka/core/theme/app_colors.dart';
@@ -10,11 +11,11 @@ import 'package:storyloka/core/theme/app_spacing.dart';
 import 'package:storyloka/core/theme/app_theme.dart';
 import 'package:storyloka/core/widgets/app_button.dart';
 import 'package:storyloka/core/widgets/app_card.dart';
-import 'package:storyloka/core/widgets/demo_widgets.dart';
+import 'helpers/demo_widgets.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
 import 'package:storyloka/data/repositories/chat_repository.dart';
 import 'package:storyloka/data/repositories/currency_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/feedback_repository.dart';
 import 'package:storyloka/data/repositories/ledger_repository.dart';
 import 'package:storyloka/data/repositories/library_repository.dart';
@@ -112,11 +113,16 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     FlutterSecureStorage.setMockInitialValues({});
     fakeRepositoriesEnableLatency = false;
+    Env.setMockValues({
+      'SUPABASE_URL': 'https://mock.supabase.co',
+      'SUPABASE_ANON_KEY': 'mock-anon-key',
+    });
     await initializeDateFormatting('id_ID', null);
   });
 
   tearDown(() {
     fakeRepositoriesEnableLatency = true;
+    Env.reset();
   });
 
   group('Fase A7: Token, Spacing, Radius & Hierarchy Audit', () {
@@ -410,16 +416,25 @@ void main() {
 
   group('Fase A7: Aksesibilitas & Target Sentuh', () {
     testWidgets('Bottom nav memiliki 5 item, label Semantics, dan tombol tengah 56px', (tester) async {
+      final sessionStore = SecureSessionStore();
+      final fakeAuth = FakeAuthRepository(sessionStore: sessionStore);
+
       await tester.pumpWidget(
         MultiProvider(
-          providers: buildAppProviders(useFakeData: true),
+          providers: buildAppProviders(
+            authRepo: fakeAuth,
+          ),
           child: const StoryLokaApp(),
         ),
       );
       await tester.pump(const Duration(milliseconds: 1000));
       await tester.pumpAndSettle();
 
-      // Tap Login untuk masuk ke shell utama
+      // Isi kredensial dan tap Login untuk masuk ke shell utama
+      await tester.enterText(find.byType(TextField).first, 'user@storyloka.app');
+      await tester.enterText(find.byType(TextField).last, 'password123');
+      await tester.pumpAndSettle();
+
       await tester.tap(find.text('Login'));
       await tester.pump(const Duration(milliseconds: 1000));
       await tester.pumpAndSettle();

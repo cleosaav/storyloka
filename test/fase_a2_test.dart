@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:storyloka/core/theme/app_theme.dart';
 import 'package:storyloka/data/models/user_book.dart';
 import 'package:storyloka/data/repositories/book_search_repository.dart';
-import 'package:storyloka/data/repositories/fake/fake_repositories.dart';
+import 'helpers/fake/fake_repositories.dart';
 import 'package:storyloka/data/repositories/library_repository.dart';
 import 'package:storyloka/features/add_book/add_book_page.dart';
 import 'package:storyloka/features/add_book/scan_page.dart';

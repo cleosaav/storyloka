@@ -113,7 +113,7 @@ class SupabaseAuthRepository implements AuthRepository {
       final user = AppUser.fromJson(userMap);
 
       // Simpan session aman (token dan user profil)
-      await sessionStore.saveSession(token: token, user: user, mode: 'real');
+      await sessionStore.saveSession(token: token, user: user);
       return user;
     } catch (e) {
       throw Exception(_mapAuthException(e));
@@ -137,7 +137,7 @@ class SupabaseAuthRepository implements AuthRepository {
       final user = AppUser.fromJson(userMap);
 
       // Simpan session aman
-      await sessionStore.saveSession(token: token, user: user, mode: 'real');
+      await sessionStore.saveSession(token: token, user: user);
       return user;
     } catch (e) {
       throw Exception(_mapAuthException(e));

@@ -19,7 +19,6 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_snack_bar.dart';
-import '../../core/widgets/demo_widgets.dart';
 import '../../core/widgets/progress_and_badge.dart';
 import '../../core/widgets/responsive_body.dart';
 import '../../data/models/user_book.dart';
@@ -256,7 +255,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final themeController = context.watch<ThemeController>();
-    final demoControls = context.watch<DemoControls>();
     final authController = context.watch<AuthController>();
     final sessionStore = context.read<SecureSessionStore>();
 
@@ -618,29 +616,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                     : AppColors.mutedGray,
                               ),
                             ),
-                            if (kDebugMode &&
-                                themeController.userPreferenceMode == ThemeMode.system) ...[
-                              const SizedBox(height: AppSpacing.s),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Debug: Percepat hysteresis (1 dtk)',
-                                    style: AppText.caption(
-                                      color: isDark
-                                          ? AppColors.mutedDark
-                                          : AppColors.mutedGray,
-                                    ),
-                                  ),
-                                  Switch.adaptive(
-                                    value: lightService.fastHysteresis,
-                                    onChanged: (val) {
-                                      lightService.fastHysteresis = val;
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
                           ],
                         );
                       },
@@ -892,133 +867,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
 
-              // Tombol Debug Notifikasi (kDebugMode Saja) — Butir 6
-              if (kDebugMode) ...[
-                const SizedBox(height: AppSpacing.m),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Kirim notifikasi tes sekarang',
-                        icon: Icons.notifications_active_outlined,
-                        onPressed: () async {
-                          await NotificationService.instance.requestPermission();
-                          final allowed = await NotificationService.instance
-                              .areNotificationsEnabled();
-                          if (!allowed) {
-                            if (context.mounted) {
-                              await _showNotificationPermissionDialog();
-                            }
-                            return;
-                          }
-                          await NotificationService.instance
-                              .showInstantTestNotification();
-                          if (context.mounted) {
-                            AppSnackBar.show(
-                              context,
-                              message:
-                                  'Notifikasi tes langsung terkirim! Cek bilah notifikasi.',
-                              type: SnackBarType.success,
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.s),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Jadwalkan tes 2 menit lagi',
-                        icon: Icons.alarm_rounded,
-                        onPressed: () async {
-                          await NotificationService.instance.requestPermission();
-                          final allowed = await NotificationService.instance
-                              .areNotificationsEnabled();
-                          if (!allowed) {
-                            if (context.mounted) {
-                              await _showNotificationPermissionDialog();
-                            }
-                            return;
-                          }
-                          final scheduled = await NotificationService.instance
-                              .scheduleTestNotificationInMinutes(2);
-                          final pending = await NotificationService.instance
-                              .getPendingNotificationRequests();
-                          if (context.mounted) {
-                            final timeStr =
-                                '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}';
-                            AppSnackBar.show(
-                              context,
-                              message:
-                                  'Notifikasi tes dijadwalkan pukul $timeStr (${pending.length} aktif).',
-                              type: SnackBarType.success,
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
               const SizedBox(height: AppSpacing.xl),
 
-              // 7. Demo Controls section (kDebugMode)
-              if (kDebugMode) ...[
-                Text(
-                  'Mode Demo & QA (Debug)',
-                  style: AppText.sectionHeading(
-                    color: isDark ? AppColors.inkDark : AppColors.ink,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.s),
-                NotesCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.bug_report_outlined,
-                            size: 20,
-                            color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                          ),
-                          const SizedBox(width: AppSpacing.s),
-                          Expanded(
-                            child: Text(
-                              'Status Demo Controls:',
-                              style: AppText.bodyMedium(
-                                color: isDark ? AppColors.inkDark : AppColors.ink,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.s),
-                      Text(
-                        '• Data Kosong: ${demoControls.isDataEmpty ? "Aktif" : "Nonaktif"}\n'
-                        '• Simulasi Error: ${demoControls.simulateNetworkError ? "Aktif" : "Nonaktif"}\n'
-                        '• Latensi Lambat: ${demoControls.simulateSlowLatency ? "Aktif (2s)" : "Normal"}\n'
-                        '• Lewati Biometrik: ${demoControls.bypassBiometric ? "Aktif" : "Nonaktif"}',
-                        style: AppText.metadata(
-                          color: isDark ? AppColors.inkDark : AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.m),
-                      PrimaryButton(
-                        label: 'Buka Demo Controls',
-                        icon: Icons.tune_rounded,
-                        onPressed: () => DemoControlsSheet.show(context),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-              ],
-
-              // 8. Logout Button
+              // 7. Logout Button
               Center(
                 child: TertiaryButton(
                   label: 'Keluar dari Akun (Logout)',

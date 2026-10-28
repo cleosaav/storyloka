@@ -156,13 +156,26 @@ flutter analyze
 ```
 
 ### Menjalankan Seluruh Pengujian Otomatis
-Jalankan seluruh suite pengujian unit dan widget test (345 tes):
+Jalankan seluruh suite pengujian unit dan widget test (355 tes):
 ```bash
 flutter test
 ```
 
+### Konfigurasi Signing Android Release (PRD §13.0)
+Sebelum membangun APK rilis yang ditandatangani keystore pribadi:
+1. Salin template konfigurasi signing:
+   ```bash
+   cp android/key.properties.example android/key.properties
+   ```
+2. Buat keystore rilis jika belum memiliki:
+   ```bash
+   keytool -genkey -v -keystore android/storyloka-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias storyloka
+   ```
+3. Sesuaikan `storePassword`, `keyPassword`, `keyAlias`, dan `storeFile` pada berkas `android/key.properties`.
+   *(Catatan: jika `key.properties` tidak ditemukan, build Gradle secara otomatis fallback ke debug key agar `flutter run --release` tetap dapat diuji di emulator).*
+
 ### Membangun Berkas APK Rilis/Debug
-Untuk membuat berkas APK instalasi Android:
+Untuk membuat berkas APK instalasi Android (sudah teroptimasi dengan Proguard R8):
 ```bash
 # Build APK Debug
 flutter build apk --debug
