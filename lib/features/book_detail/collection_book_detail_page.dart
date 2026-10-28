@@ -97,8 +97,14 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
     if (mounted) setState(() {});
     try {
       final searchRepo = context.read<BookSearchRepository>();
-      final detail = await searchRepo.getDetail(book.googleBooksId);
-      if (!mounted || detail == null) return;
+
+      // Tahap 1: Google Books + Open Library via getDetail (composite)
+      BookSearchResult? detail;
+      try {
+        detail = await searchRepo.getDetail(book.googleBooksId);
+      } catch (_) {
+        // Jika getDetail gagal, lanjut ke fallback enrich
+      }
 
       bool hasNewData = false;
       int? newPageCount = book.pageCount;
@@ -107,26 +113,53 @@ class _CollectionBookDetailPageState extends State<CollectionBookDetailPage> {
       String? newPriceCurrency = book.priceCurrency;
       String? newGenre = book.genre;
 
-      if (needsPages && detail.pageCount != null && detail.pageCount! > 0) {
-        newPageCount = detail.pageCount;
-        hasNewData = true;
+      if (detail != null) {
+        if (needsPages && detail.pageCount != null && detail.pageCount! > 0) {
+          newPageCount = detail.pageCount;
+          hasNewData = true;
+        }
+        if (needsSynopsis &&
+            detail.synopsis != null &&
+            detail.synopsis!.trim().isNotEmpty) {
+          newSynopsis = detail.synopsis;
+          hasNewData = true;
+        }
+        if (needsPrice && detail.priceAmount != null) {
+          newPriceAmount = detail.priceAmount;
+          newPriceCurrency = detail.priceCurrency;
+          hasNewData = true;
+        }
+        if ((book.genre == null || book.genre!.isEmpty) &&
+            detail.genre != null &&
+            detail.genre!.isNotEmpty) {
+          newGenre = detail.genre;
+          hasNewData = true;
+        }
       }
-      if (needsSynopsis &&
-          detail.synopsis != null &&
-          detail.synopsis!.trim().isNotEmpty) {
-        newSynopsis = detail.synopsis;
-        hasNewData = true;
-      }
-      if (needsPrice && detail.priceAmount != null) {
-        newPriceAmount = detail.priceAmount;
-        newPriceCurrency = detail.priceCurrency;
-        hasNewData = true;
-      }
-      if ((book.genre == null || book.genre!.isEmpty) &&
-          detail.genre != null &&
-          detail.genre!.isNotEmpty) {
-        newGenre = detail.genre;
-        hasNewData = true;
+
+      // Tahap 2: Fallback enrich() Open Library via ISBN jika sinopsis masih kosong
+      final stillNeedsSynopsis =
+          newSynopsis == null || newSynopsis.trim().isEmpty;
+      if (stillNeedsSynopsis &&
+          book.isbn != null &&
+          book.isbn!.trim().isNotEmpty) {
+        try {
+          final enriched = await searchRepo.enrich(
+            BookSearchResult(
+              googleBooksId: book.googleBooksId,
+              title: book.title,
+              isbn: book.isbn,
+              synopsis: newSynopsis,
+            ),
+          );
+          if (enriched.synopsis != null &&
+              enriched.synopsis!.trim().isNotEmpty) {
+            newSynopsis = enriched.synopsis;
+            hasNewData = true;
+          }
+        } catch (_) {
+          // Fallback Open Library gagal, abaikan
+        }
       }
 
       if (hasNewData && mounted) {

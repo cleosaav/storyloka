@@ -17,7 +17,7 @@ import 'package:storyloka/data/repositories/local/local_repositories.dart';
 import 'package:storyloka/features/auth/auth_controller.dart';
 import 'package:storyloka/features/tools/feedback_page.dart';
 
-class FakeSyncRemoteSourceS7 implements SyncRemoteSource {
+class FakeSyncRemoteSourceS7 extends SyncRemoteSource {
   final Map<String, List<Map<String, dynamic>>> tables = {
     'user_books': [],
     'reading_sessions': [],

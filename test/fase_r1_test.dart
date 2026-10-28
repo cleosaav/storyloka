@@ -153,21 +153,9 @@ void main() {
 
     testWidgets('(d) timeout splash (10 detik) menampilkan layar error koneksi, Coba Lagi, dan Masuk ulang',
         (tester) async {
+      // Tanpa sesi user lokal tersimpan (atau sesi korup), timeout splash memicu error koneksi
       final sessionStore = SecureSessionStore();
       final hangingRepo = _HangingAuthRepository();
-
-      // Simpan sesi dengan mode real agar lolos cek sesi fake
-      await sessionStore.saveSession(
-        token: 'real-token-xyz',
-        user: AppUser(
-          id: 'user-xyz',
-          name: 'Real User',
-          email: 'real@example.com',
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        mode: 'real',
-      );
 
       final authController = AuthController(
         authRepository: hangingRepo,

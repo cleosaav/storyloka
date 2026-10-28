@@ -34,6 +34,7 @@ class LedgerService {
   final LedgerRepository _ledgerRepository;
   static const Uuid _uuid = Uuid();
   static const String targetPrefix = '00';
+  static final DateTime genesisTimestamp = DateTime.utc(2025, 1, 1, 0, 0, 0);
 
   LedgerService(this._ledgerRepository);
 
@@ -106,13 +107,16 @@ class LedgerService {
   }
 
   /// Memastikan Genesis Block (`index = 0`, `previousHash = "0"`) ada pada repository.
+  /// F1.3: ID dibuat secara deterministik (UUID v5 dari user_id) dan timestamp tetap
+  /// agar dua perangkat menghasilkan blok #0 yang identik tanpa melanggar UNIQUE (user_id, block_index).
   Future<LedgerBlock> ensureGenesisBlock(String userId) async {
     final existingBlocks = await _ledgerRepository.getBlocks();
     if (existingBlocks.isNotEmpty) {
       return existingBlocks.first;
     }
 
-    final timestamp = DateTime.now().toUtc();
+    final timestamp = genesisTimestamp;
+    final genesisId = _uuid.v5(Namespace.url.value, 'storyloka:genesis:$userId');
     final data = <String, dynamic>{
       'message': 'StoryLoka genesis',
       'user_id': userId,
@@ -126,7 +130,7 @@ class LedgerService {
     );
 
     final genesisBlock = LedgerBlock(
-      id: _uuid.v4(),
+      id: genesisId,
       userId: userId,
       blockIndex: 0,
       timestamp: timestamp,

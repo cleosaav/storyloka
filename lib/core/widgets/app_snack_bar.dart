@@ -19,7 +19,7 @@ class AppSnackBar {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Color bgColor;
-    Color textColor = Colors.white;
+    Color textColor = AppColors.white;
     IconData icon;
 
     switch (type) {
@@ -32,7 +32,7 @@ class AppSnackBar {
         icon = Icons.error_outline_rounded;
         break;
       case SnackBarType.warning:
-        bgColor = const Color(0xFFC07A15);
+        bgColor = AppColors.amberWarm;
         icon = Icons.warning_amber_rounded;
         break;
       case SnackBarType.info:

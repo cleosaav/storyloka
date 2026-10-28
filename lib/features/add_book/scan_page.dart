@@ -123,7 +123,7 @@ class _ScanPageState extends State<ScanPage> {
       appBar: AppBar(
         title: Text(
           'Scan Barcode',
-          style: AppText.pageHeading(
+          style: AppText.sectionHeading(
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
@@ -268,18 +268,18 @@ class _ScanPageState extends State<ScanPage> {
           children: [
             const Icon(
               Icons.videocam_off_rounded,
-              size: 48,
+              size: AppSpacing.iconXxl,
               color: AppColors.softApricot,
             ),
             const SizedBox(height: AppSpacing.m),
             Text(
               'Kamera tidak tersedia',
-              style: AppText.sectionHeading(color: Colors.white),
+              style: AppText.sectionHeading(color: AppColors.white),
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Gunakan input ISBN manual di bawah.',
-              style: AppText.caption(color: Colors.white70),
+              style: AppText.caption(color: AppColors.white.withValues(alpha: 0.7)),
             ),
           ],
         ),
@@ -299,19 +299,19 @@ class _ScanPageState extends State<ScanPage> {
             children: [
               const Icon(
                 Icons.no_photography_rounded,
-                size: 48,
+                size: AppSpacing.iconXxl,
                 color: AppColors.softApricot,
               ),
               const SizedBox(height: AppSpacing.m),
               Text(
                 'Izin Kamera Ditolak',
-                style: AppText.sectionHeading(color: Colors.white),
+                style: AppText.sectionHeading(color: AppColors.white),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
                 'Izinkan akses kamera di pengaturan untuk scan barcode, atau gunakan input ISBN manual di bawah.',
                 textAlign: TextAlign.center,
-                style: AppText.caption(color: Colors.white70),
+                style: AppText.caption(color: AppColors.white.withValues(alpha: 0.7)),
               ),
             ],
           ),

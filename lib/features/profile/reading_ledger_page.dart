@@ -124,7 +124,9 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
     if (user != null) {
       try {
         await SyncService.instance.pullAll(user.id);
-      } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) debugPrint('[ReadingLedgerPage] pullAll gagal: $e');
+      }
     }
     await _loadBlocks();
   }
@@ -371,7 +373,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                       Text(
                         'Nonce: ${block.nonce}',
                         style: AppText.code(
-                          fontSize: 12,
                           color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                         ),
                       ),
@@ -468,7 +469,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                     child: SelectableText(
                       block.hash,
                       style: AppText.code(
-                        fontSize: 12,
                         color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                         fontWeight: FontWeight.bold,
                       ),
@@ -512,7 +512,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                     child: SelectableText(
                       block.previousHash,
                       style: AppText.code(
-                        fontSize: 12,
                         color: isDark ? AppColors.inkDark : AppColors.ink,
                       ),
                     ),
@@ -539,7 +538,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                     child: SelectableText(
                       rawJsonPretty,
                       style: AppText.code(
-                        fontSize: 11,
                         color: isDark ? AppColors.inkDark : AppColors.ink,
                       ),
                     ),
@@ -588,7 +586,7 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
       appBar: AppBar(
         title: Text(
           'Reading Ledger',
-          style: AppText.pageHeading(
+          style: AppText.sectionHeading(
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
@@ -1249,7 +1247,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                           'Rusak / Tidak Valid',
                           style: AppText.caption(color: AppColors.error).copyWith(
                             fontWeight: FontWeight.bold,
-                            fontSize: 10,
                           ),
                         ),
                       )
@@ -1265,7 +1262,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
                           'Rantai Terputus',
                           style: AppText.caption(color: AppColors.softApricot).copyWith(
                             fontWeight: FontWeight.bold,
-                            fontSize: 10,
                           ),
                         ),
                       )
@@ -1390,7 +1386,6 @@ class _ReadingLedgerPageState extends State<ReadingLedgerPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppText.code(
-            fontSize: 12,
             fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
             color: textColor ?? (isDark ? AppColors.inkDark : AppColors.ink),
           ),

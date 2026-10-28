@@ -266,7 +266,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       appBar: AppBar(
         title: Text(
           'Edit Profil',
-          style: AppText.pageHeading(
+          style: AppText.sectionHeading(
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),

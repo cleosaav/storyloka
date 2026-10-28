@@ -255,12 +255,12 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                               decoration: BoxDecoration(
                                 color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: const [
+                                border: Border.all(color: AppColors.white, width: 2),
+                                boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black26,
+                                    color: AppColors.ink.withValues(alpha: 0.25),
                                     blurRadius: 3,
-                                    offset: Offset(0, 1),
+                                    offset: const Offset(0, 1),
                                   ),
                                 ],
                               ),
@@ -283,12 +283,12 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                                 decoration: BoxDecoration(
                                   color: AppColors.softApricot,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.8),
-                                  boxShadow: const [
+                                  border: Border.all(color: AppColors.white, width: 1.8),
+                                  boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black38,
+                                      color: AppColors.ink.withValues(alpha: 0.35),
                                       blurRadius: 3,
-                                      offset: Offset(0, 1),
+                                      offset: const Offset(0, 1),
                                     ),
                                   ],
                                 ),
@@ -328,13 +328,13 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                   decoration: BoxDecoration(
                     color: (isDark ? AppColors.surfaceDark : AppColors.white)
                         .withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
                     border: Border.all(
                       color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
                       width: 0.8,
                     ),
                     boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 4),
+                      BoxShadow(color: AppColors.shadowSubtle, blurRadius: 4),
                     ],
                   ),
                   child: Row(
@@ -343,7 +343,7 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                       if (_isLoading) ...[
                         Icon(
                           Icons.radar_rounded,
-                          size: 11,
+                          size: AppSpacing.iconXs,
                           color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                         ),
                         const SizedBox(width: 4),
@@ -351,12 +351,12 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                           'Mencari toko...',
                           style: AppText.caption(
                             color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                          ).copyWith(fontSize: 10),
+                          ),
                         ),
                       ] else if (_stores.isNotEmpty) ...[
                         const Icon(
                           Icons.store_mall_directory_rounded,
-                          size: 12,
+                          size: AppSpacing.iconXs,
                           color: AppColors.deepTeal,
                         ),
                         const SizedBox(width: 4),
@@ -364,12 +364,12 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                           '${_stores.length} toko di sekitar',
                           style: AppText.caption(
                             color: isDark ? AppColors.inkDark : AppColors.ink,
-                          ).copyWith(fontSize: 10, fontWeight: FontWeight.bold),
+                          ).copyWith(fontWeight: FontWeight.bold),
                         ),
                       ] else ...[
                         const Icon(
                           Icons.location_searching_rounded,
-                          size: 12,
+                          size: AppSpacing.iconXs,
                           color: AppColors.mutedGray,
                         ),
                         const SizedBox(width: 4),
@@ -377,7 +377,7 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                           'Ketuk untuk cari lebih luas',
                           style: AppText.caption(
                             color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
-                          ).copyWith(fontSize: 10),
+                          ),
                         ),
                       ],
                     ],
@@ -397,13 +397,13 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                   decoration: BoxDecoration(
                     color: (isDark ? AppColors.surfaceDark : AppColors.white)
                         .withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppSpacing.inputRadius),
                     border: Border.all(
                       color: isDark ? AppColors.borderDark : AppColors.borderNeutral,
                       width: 0.8,
                     ),
                     boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 4),
+                      BoxShadow(color: AppColors.shadowSubtle, blurRadius: 4),
                     ],
                   ),
                   child: Row(
@@ -411,7 +411,7 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                     children: [
                       Icon(
                         Icons.open_in_full_rounded,
-                        size: 11,
+                        size: AppSpacing.iconXs,
                         color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
                       ),
                       const SizedBox(width: 4),
@@ -419,7 +419,7 @@ class _MiniBookstoreMapState extends State<MiniBookstoreMap> {
                         'Peta Penuh',
                         style: AppText.caption(
                           color: isDark ? AppColors.primaryDark : AppColors.deepTeal,
-                        ).copyWith(fontSize: 10, fontWeight: FontWeight.bold),
+                        ).copyWith(fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),

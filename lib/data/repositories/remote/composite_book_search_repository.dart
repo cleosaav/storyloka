@@ -146,7 +146,9 @@ class CompositeBookSearchRepository implements GoogleBooksRepository {
         if (olBook != null) {
           detail = olBook.copyWith(synopsisSource: 'Open Library');
         }
-      } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) debugPrint('[CompositeBookSearchRepo] lookupIsbn fallback gagal: $e');
+      }
     }
 
     if (detail != null) {

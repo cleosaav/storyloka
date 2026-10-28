@@ -55,7 +55,11 @@ class LightSensorService extends ChangeNotifier with WidgetsBindingObserver {
       try {
         WidgetsBinding.instance.addObserver(this);
         _isObserverRegistered = true;
-      } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[LightSensorService] Gagal mendaftarkan observer: $e');
+        }
+      }
     }
   }
 
@@ -254,7 +258,11 @@ class LightSensorService extends ChangeNotifier with WidgetsBindingObserver {
     if (_isObserverRegistered) {
       try {
         WidgetsBinding.instance.removeObserver(this);
-      } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[LightSensorService] Gagal menghapus observer: $e');
+        }
+      }
       _isObserverRegistered = false;
     }
     _subscription?.cancel();

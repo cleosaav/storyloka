@@ -75,7 +75,11 @@ class _ProfilePageState extends State<ProfilePage> {
           _stopwatchNotificationEnabled = stopwatch;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfilePage] Gagal memuat preferensi notifikasi: $e');
+      }
+    }
   }
 
   Future<void> _loadSummary() async {
@@ -98,7 +102,10 @@ class _ProfilePageState extends State<ProfilePage> {
           _isLoadingSummary = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfilePage] Gagal memuat ringkasan buku: $e');
+      }
       if (mounted) {
         setState(() => _isLoadingSummary = false);
       }
@@ -211,14 +218,37 @@ class _ProfilePageState extends State<ProfilePage> {
       isDestructive: true,
     );
 
-    if (confirmed == true && context.mounted) {
-      await NotificationService.instance.cancelDailyReadingReminder();
-      if (context.mounted) {
-        await context.read<AuthController>().logout();
+    if (confirmed != true || !context.mounted) return;
+
+    final authController = context.read<AuthController>();
+    final userId = authController.currentUser?.id;
+
+    if (userId != null && userId.isNotEmpty) {
+      await SyncService.instance.syncBeforeLogout(userId);
+      final pendingCount =
+          await SyncService.instance.refreshPendingCount(userId: userId);
+
+      if (pendingCount > 0 && context.mounted) {
+        final proceed = await AppDialog.showConfirm(
+          context: context,
+          title: 'Data Belum Tersinkron',
+          message: 'Ada data belum tersinkron, tetap logout?',
+          cancelLabel: 'Batal',
+          confirmLabel: 'Tetap Logout',
+          isDestructive: true,
+        );
+
+        if (proceed != true || !context.mounted) {
+          return;
+        }
       }
-      if (context.mounted) {
-        context.go('/login');
-      }
+    }
+
+    if (context.mounted) {
+      await authController.logout(skipSync: true);
+    }
+    if (context.mounted) {
+      context.go('/login');
     }
   }
 

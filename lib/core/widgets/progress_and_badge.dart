@@ -104,7 +104,7 @@ class StatusBadge extends StatelessWidget {
         break;
       case BookStatus.reading:
         bgColor = AppColors.softApricot.withValues(alpha: 0.2);
-        textColor = isDark ? AppColors.softApricot : const Color(0xFFC07A15);
+        textColor = isDark ? AppColors.softApricot : AppColors.amberWarm;
         icon = Icons.auto_stories_outlined;
         break;
       case BookStatus.finished:

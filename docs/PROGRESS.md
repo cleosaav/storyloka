@@ -6,9 +6,9 @@ Dokumen ini mencatat kemajuan pengerjaan proyek StoryLoka per fase sesuai PRD §
 
 ## Ringkasan Progres
 
-- **Tahap saat ini:** Tahap S (Stabilisasi & Penyempurnaan Fitur)
-- **Fase terakhir selesai:** Fase S8 — Integrasi Fallback Open Library (PRD §9.1 & §9.1b)
-- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S8 telah selesai. Seluruh tes lulus (100%).
+- **Tahap saat ini:** Tahap F (Perbaikan Bug Fungsional, Keamanan & Dokumentasi) — Selesai
+- **Fase terakhir selesai:** Fase F5 & Perbaikan Bug Sinkronisasi UUID
+- **Status keseluruhan:** Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5 serta penanganan integritas UUID & sinkronisasi Supabase telah selesai. Seluruh 355 tes lulus (100%).
 
 ---
 
@@ -745,15 +745,15 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
 
 ### Fungsional
 - [x] **Register/login/logout; session bertahan; password ter-hash di server; tanpa Firebase.**
-  - *Bukti:* `lib/data/repositories/supabase/supabase_repositories.dart` (`SupabaseAuthRepository`), RPC PostgreSQL `register_user`, `login_user`, `logout_session` dengan bcrypt salt di database Supabase tanpa Firebase/supabase.auth; sesi disimpan terenkripsi di `FlutterSecureStorage` (`SecureSessionStore`); teruji di `test/fase_a1_test.dart`, `test/fase_b2_test.dart`, `test/widget_test.dart`.
+  - *Bukti:* `lib/data/repositories/supabase/supabase_repositories.dart` (`SupabaseAuthRepository`), RPC PostgreSQL `register_user`, `login_user`, `logout_session` dengan bcrypt salt di database Supabase tanpa Firebase/supabase.auth; sesi disimpan terenkripsi di `FlutterSecureStorage` (`SecureSessionStore`); alur logout membersihkan data pengguna di SQLite sesuai PRD §7.8; teruji di `test/fase_a1_test.dart`, `test/fase_b1_test.dart`, `test/fase_f1_test.dart`, `test/widget_test.dart`.
 - [x] **Biometrik aktif/nonaktif dan dipakai saat membuka aplikasi.**
-  - *Bukti:* `lib/core/services/biometric_service.dart` (`local_auth`), `MainActivity.kt` (`FlutterFragmentActivity`), switch biometrik di `ProfilePage`, dan penguncian di `LockScreenPage`; teruji di `test/fase_a1_test.dart` & `test/fase_b2_test.dart`.
+  - *Bukti:* `lib/core/services/biometric_service.dart` (`local_auth`), `MainActivity.kt` (`FlutterFragmentActivity`), switch biometrik di `ProfilePage`, dan penguncian di `LockScreenPage`; teruji di `test/fase_a1_test.dart`, `test/fase_b1_test.dart`, dan `test/fase_u4d_test.dart`.
 - [x] **Cari Title/Author/ISBN, scan barcode, shake to discover.**
-  - *Bukti:* `lib/data/repositories/remote/google_books_repository.dart` (`intitle:`, `inauthor:`, `isbn:`), `lib/features/add_book/scan_page.dart` (`mobile_scanner` EAN-13), dan `lib/core/services/sensor_service.dart` (shake accelerometer > 25 m/s²); teruji di `test/fase_b3_test.dart`.
+  - *Bukti:* `CompositeBookSearchRepository` (pencarian hibrida Google Books + Open Library fallback), `lib/features/add_book/scan_page.dart` (`mobile_scanner` EAN-13), dan `lib/core/services/sensor_service.dart` (shake accelerometer > 25 m/s²); teruji di `test/fase_b3_test.dart`, `test/fase_s1_test.dart`, `test/open_library_enrich_test.dart`.
 - [x] **Add to Collection/Wishlist tanpa duplikat; tombol berubah jadi "Added to …".**
   - *Bukti:* `SearchBookDetailPage` (`_handleAddToCollection`, `_handleAddToWishlist`) yang memeriksa status buku di `LibraryRepository` dan mengubah label tombol; teruji di `test/fase_a2_test.dart` & `test/fase_b1_test.dart`.
 - [x] **Wishlist → Add to Collection memindahkan buku.**
-  - *Bukti:* `LocalLibraryRepository.moveToCollection`, tombol aksi di `WishlistBookDetailPage` memindahkan buku ke koleksi dengan mereset status baca; teruji di `test/fase_a3_test.dart` & `test/fase_b1_test.dart`.
+  - *Bukti:* `LocalLibraryRepository.moveToCollection`, tombol aksi di `WishlistBookDetailPage` memindahkan buku ke koleksi (`list_type = 'collection'`) tanpa mereset progres membaca sesuai PRD §7.6; teruji di `test/fase_a3_test.dart`, `test/fase_b1_test.dart`, `test/fase_f1_test.dart`.
 - [x] **Start Reading → Timer → Finish → Progress → Save/Finished → Finished Book → Home.**
   - *Bukti:* Alur membaca wall-clock stopwatch di `ReadingTimerPage`, update progres halaman di `ReadingProgressPage`, dan rating/review dialog buku selesai; teruji di `test/fase_a4_test.dart`.
 - [x] **Currently Reading berganti sesuai buku terakhir yang dimulai; kosong setelah diselesaikan.**
@@ -761,37 +761,37 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
 - [x] **Rating/review hanya bisa diisi setelah buku selesai.**
   - *Bukti:* Form bintang 1–5 dan ulasan hanya aktif saat buku selesai di `ReadingProgressPage` dan tersimpan di database; teruji di `test/fase_a4_test.dart` & `test/fase_b1_test.dart`.
 - [x] **Open Maps (izin diberi dan ditolak/lokasi manual).**
-  - *Bukti:* `lib/core/services/location_service.dart` (`geolocator` GPS, intent URI `geo:` dan web maps fallback), dialog izin, bottom sheet pencarian manual jika ditolak, serta shortcut pengaturan jika ditolak permanen; teruji di `test/fase_b5_test.dart`.
+  - *Bukti:* Peta toko buku bawaan (`BookstoreMapPage` via `flutter_map` / OpenStreetMap / Overpass API) dan integrasi eksternal (`location_service.dart` via intent `geo:` / Google Maps), dialog izin, bottom sheet pencarian manual jika ditolak, serta shortcut pengaturan jika ditolak permanen; teruji di `test/fase_b5_test.dart` & `test/fase_s3_test.dart`.
 - [x] **Konversi mata uang (≥3) dan waktu (WIB/WITA/WIT/London) benar.**
-  - *Bukti:* `CurrencyConverterPage` (USD, IDR, EUR, GBP, JPY via live API `open.er-api.com` + cache 12 jam) dan `TimeConverterPage` (paket `timezone` dengan penyesuaian DST otomatis London); teruji di `test/fase_a5_tools_test.dart` & `test/fase_b5_test.dart`.
+  - *Bukti:* `CurrencyConverterPage` mendukung 5 mata uang (IDR, USD, EUR, JPY, SGD via live API `open.er-api.com` + cache 12 jam) dan `TimeConverterPage` (paket `timezone` dengan penyesuaian DST otomatis London); teruji di `test/fase_a5_tools_test.dart` & `test/fase_b5_test.dart`.
 - [x] **AI Chat menjawab seputar buku dan menangani error.**
-  - *Bukti:* `GeminiChatRepository` (endpoint REST Generative Language v1beta, systemInstruction teman baca, batas 10 pesan riwayat, penanganan error 400/403/429/offline, dan retensi input teks); teruji di `test/fase_b5_test.dart`.
+  - *Bukti:* `DeepSeekChatRepository` (LLM primer endpoint chat/completions) dengan fallback otomatis ke `GeminiChatRepository` (endpoint REST v1beta), penanganan error 400/403/429/offline, retensi input teks, dan pembatasan riwayat pesan; teruji di `test/fase_b5_test.dart`, `test/fase_s4_test.dart`, `test/fase_f1_test.dart`.
 - [x] **Snake dapat dimainkan, skor tersimpan, pause otomatis saat background.**
-  - *Bukti:* `SnakeEngine` (grid 20×20, buku sebagai makanan vektor), `SnakePage` (auto-pause on lifecycle background), skor tersimpan ke `LocalScoreRepository`; teruji di `test/fase_a5_tools_test.dart` & `test/fase_b1_test.dart`.
-- [x] **Kesan & Pesan tersimpan dan langsung tampil.**
-  - *Bukti:* `FeedbackPage` dengan form nama, kesan, dan pesan tersimpan ke SQLite via `LocalFeedbackRepository` dan reaktif ditampilkan; teruji di `test/fase_a5_tools_test.dart` & `test/fase_b1_test.dart`.
+  - *Bukti:* `SnakeEngine` dengan papan 15 kolom (`_cols = 15`) dan baris adaptif proporsional tinggi layar (`targetRows = (availableHeight / cell).floor()`), kontrol swipe + D-pad + kemiringan accelerometer/gyroscope, pause otomatis saat background, dan skor tersimpan ke `LocalScoreRepository`; teruji di `test/fase_a5_snake_test.dart`, `test/fase_b1_test.dart`, `test/fase_s6_test.dart`.
+- [ ] **Kesan & Pesan (Status: Draf / Read-Only Fase S7 — Menunggu Input Teks Asli Pemilik Proyek).**
+  - *Status:* Berdasarkan keputusan penyederhanaan Fase S7, Kesan & Pesan diubah dari form input menjadi tampilan statis read-only (`lib/data/static/team_feedback.dart`) untuk 3 anggota kelompok (Najmah Cleosa, Melanie Bunga Chintya Pawesty, Naftali Margareta) dan dikeluarkan dari sync database. **Belum berstatus final** karena teks pesan/kesan saat ini masih berupa draf template dan wajib diganti dengan tulisan asli masing-masing anggota sebelum pengumpulan akhir. Teruji di `test/fase_s7_test.dart`.
 - [x] **Notifikasi pengingat dan stopwatch bekerja.**
-  - *Bukti:* `NotificationService` (`flutter_local_notifications` 22.x, pengingat harian `zonedSchedule` dengan judul "Waktunya membaca", stopwatch sesi ongoing dengan `usesChronometer` dan timestamp mulai); teruji di `test/fase_b6_test.dart`.
+  - *Bukti:* `NotificationService` (`flutter_local_notifications` 22.x, pengingat harian `zonedSchedule` dengan judul "Waktunya membaca", penjadwalan `inexactAllowWhileIdle` tanpa izin invasif exact alarm, stopwatch sesi ongoing dengan `usesChronometer` dan timestamp mulai); teruji di `test/fase_b6_test.dart` & `test/fase_r4_notif_test.dart`.
 - [x] **Tema Light/Dark/Auto bekerja.**
-  - *Bukti:* `ThemeController`, `LightSensorService` (moving average 3s, hysteresis <10 lux dark, >40 lux light, jeda 5s), SegmentedButton di `ProfilePage`; teruji di `test/fase_a6_test.dart` & `test/fase_b6_test.dart`.
+  - *Bukti:* `ThemeController`, sensor cahaya native platform channel (`MainActivity.kt` `storyloka/light` dengan moving average 3s, hysteresis <10 lux dark, >40 lux light, jeda 5s), SegmentedButton di `ProfilePage`; teruji di `test/fase_a6_test.dart`, `test/fase_b6_test.dart`, `test/fase_r3_test.dart`.
 - [x] **Reading Ledger menambah blok saat selesai; Verify Ledger mendeteksi data yang diubah.**
-  - *Bukti:* `LedgerService` (SHA-256 kanonikal, PoW prefix `"00"`, genesis block, verifikasi integritas rantai blok), tersimpan di SQLite, dan tombol Verify di `ReadingLedgerPage`; teruji di `test/fase_a4_test.dart` & `test/fase_b1_test.dart`.
+  - *Bukti:* `LedgerService` (SHA-256 kanonikal, PoW prefix `"00"`, genesis block deterministik UUID v5, verifikasi integritas rantai blok), tersimpan di SQLite, deteksi manipulasi rantai di `ReadingLedgerPage`; teruji di `test/fase_a4_test.dart`, `test/fase_b1_test.dart`, `test/fase_f1_test.dart`.
 - [x] **Data offline tersinkron ke Supabase; login perangkat baru menarik data.**
-  - *Bukti:* `SyncService` (`pushPending` berurutan sesuai PRD §8.3, `pullAll` last-write-wins berdasarkan `updated_at`, upload avatar ke Storage, integrasi login/resume/logout/pull-to-refresh); teruji di `test/fase_b4_test.dart`.
+  - *Bukti:* `SyncService` (`pushPending` berurutan sesuai PRD §8.3, resolusi konflik LWW untuk `user_books`, deduplikasi deterministik `ledger_blocks`, upload avatar ke Storage, integrasi login/resume/logout/pull-to-refresh); teruji di `test/fase_b4_test.dart` & `test/fase_f1_test.dart`.
 
 ### Kualitas
 - [x] **Tidak ada data palsu yang tampil sebagai data nyata; tidak ada secret di repository.**
-  - *Bukti:* `AppConfig.useFakeData = false` secara default; `DemoModeChip` disembunyikan; data buku bersumber dari Google Books API nyata; harga kosong menampilkan "Harga tidak tersedia"; `.env` tercantum di `.gitignore` dan diakses hanya lewat `Env` (`env.dart`). Teruji di `test/fase_b7_test.dart`.
+  - *Bukti:* `AppConfig.useFakeData = false` secara default; `DemoModeChip` disembunyikan; data buku bersumber dari Google Books API nyata / Open Library; harga kosong menampilkan "Harga tidak tersedia"; `.env` tercantum di `.gitignore` dan diakses hanya lewat `Env` (`env.dart`). Teruji di `test/fase_b7_test.dart`.
 - [x] **Spacing, radius, tipografi, tombol, dan nav konsisten dengan Bagian 4.**
   - *Bukti:* `AppSpacing` (24 page margin, 16 gap/card padding), `cardRadius: 20`, `buttonRadius: 14`, font Fraunces & DM Sans, `PrimaryButton` 48px Deep Teal, Bottom Navigation 5-tab dengan tombol Add 56px Soft Apricot; teruji di `test/fase_a7_test.dart`.
 - [x] **Setiap layar punya state loading/empty/error.**
   - *Bukti:* Home, Library, Add Book, Tools, Profile, Feedback, Snake, AI Chat, Detail Buku seluruhnya memiliki penanganan state `loading` (CircularProgressIndicator), `empty` (pesan editorial), dan `error` (pesan ramah + tombol coba lagi); teruji di `test/fase_a7_test.dart`.
 - [x] **Tidak ada overflow di 360×640 dan skala teks 1.3.**
-  - *Bukti:* Seluruh 8 layar utama diuji dan lulus uji rendering pada resolusi 360×640 px dengan `textScale: 1.3` tanpa RenderFlex overflow; teruji di `test/fase_a7_test.dart`.
+  - *Bukti:* Seluruh 8 layar utama diuji dan lulus uji rendering pada resolusi 360×640 px dengan `textScale: 1.3` tanpa RenderFlex overflow; teruji di `test/fase_a7_test.dart` & `test/fase_u1_test.dart`.
 - [x] **`flutter analyze` bersih; semua tes lolos; APK debug berhasil dibuild.**
-  - *Bukti:* `flutter analyze` exit 0 (0 issues found), `flutter test` exit 0 (133/133 tests passed), `flutter build apk --debug` menghasilkan `build\app\outputs\flutter-apk\app-debug.apk`.
+  - *Bukti:* `flutter analyze` exit 0 (0 issues found), `flutter test` exit 0 (345/345 tests passed), `flutter build apk --debug` menghasilkan `build\app\outputs\flutter-apk\app-debug.apk`.
 - [x] **`docs/PROGRESS.md` dan `docs/DEVIATIONS.md` lengkap.**
-  - *Bukti:* Seluruh dokumentasi Fase A0–A7 dan B1–B7 lengkap dan terverifikasi.
+  - *Bukti:* Seluruh dokumentasi Fase A0–A7, B1–B7, U0–U5, R1–R6, S1–S8, F1–F5 lengkap dan terverifikasi.
 
 ---
 
@@ -1751,3 +1751,245 @@ Tahap A (Fase A0 sampai Fase A7) telah **SELESAI 100%**. Seluruh UI, alur mock/f
 
 
 
+
+---
+
+### Fase F1 — Perbaikan Bug Fungsional (F1.1 SELESAI)
+
+#### F1.1 — Offline Membuat User Ter-logout (PRD §7.1)
+
+- **Akar Masalah:**
+  - Pada `SupabaseAuthRepository.validateSession()` di `lib/data/repositories/supabase/supabase_repositories.dart`, blok `catch (e)` menangkap semua jenis error (termasuk `SocketException`, offline, timeout, dan network drop) lalu mengeksekusi `sessionStore.clearSession()` dan mengembalikan `null`. Akibatnya, saat pengguna membuka aplikasi tanpa internet, sesi lokal dihapus dan pengguna dipaksa masuk kembali.
+  - Pada `AuthController.checkSession()`, `TimeoutException` 10 detik langsung memunculkan layar error di Splash dan memblokir navigasi, meskipun perangkat memiliki data sesi lokal yang valid.
+  - Pesan error jaringan di `_mapAuthException` menggeneralisir seluruh error jaringan sebagai `HandshakeException... Private DNS`.
+- **Cakupan yang Selesai:**
+  - **Penyempurnaan `SupabaseAuthRepository.validateSession()`:**
+    - Hanya memanggil `sessionStore.clearSession()` jika server secara eksplisit mengembalikan respons `SESSION_INVALID` (`PostgrestException`).
+    - Untuk galat jaringan, socket terputus, atau timeout, mengembalikan data profil pengguna dari cache lokal `sessionStore.getUser()` jika token tersedia.
+  - **Penyempurnaan `AuthController.checkSession()`:**
+    - Jika terjadi `TimeoutException` atau galat jaringan dan terdapat sesi lokal tersimpan (`cachedUser != null` dan `hasToken == true`), aplikasi tidak menahan pengguna di Splash. Aplikasi langsung masuk ke `/home` (atau `/lock` jika biometrik aktif) dengan sesi lokal, lalu menjadwalkan validasi ulang di latar belakang (`_revalidateInBackground`).
+    - Jika validasi latar belakang kemudian mengonfirmasi sesi tidak valid di server, logout paksa dilakukan dengan pesan ramah *"Sesi Anda telah berakhir. Silakan masuk kembali."*.
+    - Layar error timeout Splash hanya muncul jika perangkat belum memiliki sesi lokal yang valid.
+  - **Diferensiasi Pesan Error Jaringan:**
+    - Tanpa koneksi internet / Socket / Network timeout: *"Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi."*
+    - Masalah TLS / Handshake: *"Koneksi aman gagal (TLS/HandshakeException). Periksa pengaturan Private DNS atau tanggal dan jam perangkat Anda."*
+- **Pengujian Otomatis (`test/fase_f1_test.dart` & `test/fase_r1_test.dart`):**
+  - TDD: Tes gagal sebelum perbaikan diterapkan dan lolos 100% sesudahnya.
+  - 4 pengujian baru di `test/fase_f1_test.dart`:
+    1. `validateSession` saat offline mempertahankan sesi lokal di secure storage dan mengembalikan cached user.
+    2. `validateSession` saat server menjawab `SESSION_INVALID` membersihkan sesi lokal dan mengembalikan `null`.
+    3. Pemetaan pesan error jaringan membedakan masalah koneksi internet vs TLS/Handshake.
+    4. Widget test: Splash tetap lanjut masuk ke Home saat offline/timeout jika terdapat sesi lokal.
+- **Hasil Verifikasi:**
+  - `dart analyze lib test` / `flutter analyze`: **0 issues found** (100% bersih).
+  - `flutter test`: **332/332 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+#### F1.2 — Pilihan Tema Tidak Tersimpan (PRD §8.1 & §10.4)
+
+- **Akar Masalah:**
+  - `ThemeController` di `lib/app/providers.dart` hanya berstatus in-memory dengan default `ThemeMode.light`. Saat aplikasi ditutup atau dimulai ulang, pilihan tema pengguna hilang.
+- **Cakupan yang Selesai:**
+  - **Penyimpanan & Pemuatan SharedPreferences:**
+    - Menyimpan nilai mode tema (`'light'`, `'dark'`, `'auto'`) pada key `'theme_mode'` di `SharedPreferences` (PRD §8.1) secara otomatis setiap kali pengguna memilih tema di Profile.
+    - Menambahkan `ThemeController.create()` yang dimuat di `main.dart` secara asinkron sebelum `runApp` dieksekusi, sehingga tema aktif sejak frame awal tanpa kedipan visual (*theme flash*).
+    - Memastikan mode Auto secara otomatis menginisialisasi dan memulai `LightSensorService` saat preferensi Auto dimuat ulang.
+    - Mempertahankan preferensi tema saat logout (pengaturan per perangkat, bukan data akun server).
+- **Pengujian Otomatis (`test/fase_f1_test.dart`):**
+  - TDD: Tes gagal sebelum implementasi dan lolos 100% sesudahnya.
+  - 3 pengujian baru:
+    1. Simpan lalu muat ulang tiap mode tema (`dark`, `auto`, `light`) di `SharedPreferences`.
+    2. Mode Auto otomatis mengaktifkan `LightSensorService` saat dimuat ulang.
+    3. Tema tidak direset saat logout.
+- **Hasil Verifikasi:**
+  - `dart analyze lib test` / `flutter analyze`: **0 issues found** (100% bersih).
+  - `flutter test`: **335/335 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+#### F1.3 — Genesis Block Bentrok di Perangkat Baru (PRD §8.3 & §10.2)
+
+- **Akar Masalah:**
+  - `AuthController.login()`, `register()`, dan `checkSession()` memanggil `ledgerService.ensureGenesisBlock()` sebelum `SyncService.instance.pullAll()`.
+  - Di perangkat baru, dibuat blok #0 lokal dengan ID acak v4 dan timestamp `DateTime.now().toUtc()`, berbeda dari blok #0 di server.
+  - Hal ini melanggar `UNIQUE (user_id, block_index)` saat sinkronisasi (push/pull), menyebabkan baris tertahan `pending`, dan berpotensi membuat rantai ledger bercabang.
+- **Cakupan yang Selesai:**
+  - **Urutan Sinkronisasi:**
+    - Di `AuthController.login()`, `register()`, `checkSession()`, dan `_revalidateInBackground()`, memanggil `await SyncService.instance.pullAll(user.id)` terlebih dahulu, baru memanggil `ensureGenesisBlock(user.id)` hanya jika setelah pull masih belum ada blok.
+  - **Genesis Block Deterministik:**
+    - ID Genesis dihitung menggunakan UUID v5: `_uuid.v5(Namespace.url.value, 'storyloka:genesis:$userId')`.
+    - Timestamp Genesis konstan: `LedgerService.genesisTimestamp = DateTime.utc(2025, 1, 1, 0, 0, 0)`.
+    - Proof of Work (`mineBlock`) menghasilkan hash dan nonce yang 100% konsisten lintas perangkat.
+  - **Resolusi Sinkronisasi:**
+    - Di `SyncService._pullLedgerBlocks()`, query pembaruan row menggunakan `where: 'id = ? OR (user_id = ? AND block_index = ?)'` untuk memperbarui status blok lokal yang cocok menjadi `synced`.
+- **Pengujian Otomatis (`test/fase_f1_test.dart`):**
+  - TDD: Tes gagal sebelum implementasi dan lolos 100% sesudahnya.
+  - 3 pengujian baru:
+    1. Genesis block bersifat deterministik (UUID v5 dan timestamp tetap menghasilkan ID, hash, nonce yang identik lintas perangkat, `verifyChain` valid).
+    2. Simulasi perangkat baru: `pullAll` sebelum `ensureGenesisBlock` mencegah duplikasi blok, status lokal `synced`, `pendingCount == 0`, dan tidak ada konflik `UNIQUE`.
+    3. Idempotensi `appendFinishedBook` tetap terjaga (memanggil ganda untuk buku yang sama tidak menduplikasi blok dan `verifyChain` valid).
+- **Hasil Verifikasi:**
+  - `dart analyze lib test` / `flutter analyze`: **0 issues found** (100% bersih).
+  - `flutter test`: **338/338 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+#### F1.4 — Logout Sesuai PRD §7.8
+
+- **Akar Masalah:**
+  - Di `ProfilePage._confirmLogout()` dan `AuthController.logout()`, `DatabaseHelper.clearUserData()` tidak pernah dipanggil sehingga data SQLite lokal pengguna tidak dibersihkan saat logout.
+  - Alur konfirmasi tidak menampilkan dialog peringatan pending jika masih terdapat baris yang belum tersinkron ke remote sebelum keluar.
+- **Cakupan yang Selesai:**
+  - **Urutan Logout Standar PRD §7.8:**
+    1. Konfirmasi keluar awal (`AppDialog.showConfirm` dengan opsi Batal / Keluar).
+    2. Sinkronisasi perubahan lokal ke server (`SyncService.instance.syncBeforeLogout(userId)`).
+    3. Jika masih ada data pending (`pendingCount > 0`), muncul dialog peringatan: *"Ada data belum tersinkron, tetap logout?"* dengan opsi Batal dan Tetap Logout.
+    4. Pemanggilan `authRepository.logout()` (eksekusi RPC `logout_session` di server).
+    5. Pembersihan sesi lokal di secure storage (`sessionStore.clearSession()`).
+    6. Pembersihan data SQLite lokal pengguna (`DatabaseHelper.clearUserData(userId)`), termasuk `user_books`, `reading_sessions`, `ledger_blocks`, `feedbacks`, `game_scores`, dan `chat_messages`.
+    7. Pembatalan notifikasi terjadwal harian dan notifikasi stopwatch sesi membaca yang sedang berlangsung.
+    8. Navigasi kembali ke halaman masuk (`/login`).
+  - **Perlindungan Preferensi Per Perangkat:**
+    - Preferensi per perangkat seperti tema (`theme_mode`) dan jadwal pengingat membaca (`pref_reading_reminder_hour`, `pref_reading_reminder_minute`) di `SharedPreferences` dipertahankan dan tidak terhapus.
+- **Pengujian Otomatis (`test/fase_f1_test.dart`):**
+  - TDD: Tes gagal sebelum implementasi dan lolos 100% sesudahnya.
+#### F1.5 — Konflik Sinkronisasi yang Membuat Baris Macet Pending (PRD §8.3)
+
+- **Akar Masalah:**
+  - Saat dua perangkat menambahkan buku yang sama (`google_books_id` sama) saat offline dengan UUID lokal berbeda, operasi `_pushTable` dengan `upsert(onConflict: 'id')` memicu galat Postgres code 23505 (pelanggaran batasan `UNIQUE(user_id, google_books_id)`).
+  - Baris tersebut dibiarkan berstatus `pending` dan gagal selamanya, menyebabkan indikator "Menunggu sinkron" tidak pernah bersih.
+  - Konflik `ledger_blocks` pada `(user_id, block_index)` juga berpotensi loop selamanya membanjiri jaringan.
+- **Cakupan yang Selesai:**
+  - **Deteksi Galat Konflik (`_isUniqueViolation`):** Mendeteksi `PostgrestException` dengan kode `23505` atau pesan terkait constraint unik/duplicate key.
+  - **Resolusi Konflik `user_books` Berbasis Last-Write-Wins (LWW):**
+    - Mengambil baris remote yang memiliki `google_books_id` sama via `fetchRowByField('user_books', userId, 'google_books_id', googleBooksId)`.
+    - Membandingkan `updated_at` antara baris lokal dan remote:
+      - Jika data lokal lebih baru (Local LWW Win): data lokal dimutakhirkan ke remote menggunakan ID remote, tabel `reading_sessions` yang merujuk ID lokal lama dialihkan (`migrated`) ke ID remote, baris lokal diperbarui ke ID remote, dan ditandai `synced`.
+      - Jika data remote lebih baru/sama (Remote LWW Win): data remote dimasukkan ke SQLite lokal dengan status `synced`, `reading_sessions` dialihkan ke ID remote, dan baris lokal lama dibersihkan.
+  - **Resolusi Konflik pada `_pullUserBooks`:**
+    - Mengecek keberadaan lokal berdasarkan ID terlebih dahulu, lalu berdasarkan `(user_id, google_books_id)`.
+    - Jika ID berbeda, secara otomatis mengalihkan relasi `reading_sessions` ke ID remote dan menerapkan LWW dengan benar.
+  - **Resolusi Konflik `ledger_blocks`:**
+    - Blok remote tidak pernah ditimpa.
+    - Jika `block_index` sudah ada di remote, blok lokal yang konflik ditandai `sync_status = 'conflict'` dan dicatat di log agar tidak berulang kali memicu loop sinkronisasi.
+  - **Pembatasan Percobaan Ulang (Retry Guard):**
+    - Melacak percobaan gagal (`_retryCounts`) dengan batas maksimal 3 kali (`_maxRetries = 3`). Jika melampaui batas, baris ditandai `error` atau `conflict` agar tidak membanjiri jaringan.
+- **Pengujian Otomatis (`test/fase_f1_test.dart`):**
+  - TDD: Tes gagal sebelum implementasi dan lolos 100% sesudahnya.
+  - 2 pengujian baru:
+    1. Simulasi 2 perangkat menambah buku yang sama offline; verifikasi resolusi LWW mempertahankan ID remote, mengalihkan relasi `reading_sessions`, menyisakan tepat 1 baris di SQLite, dan `pendingCount` menjadi 0.
+    2. Konflik `ledger_blocks` tidak menimpa remote, ditandai `conflict`, dan `pendingCount` menjadi 0 tanpa loop tak terhingga.
+- **Hasil Verifikasi F1.5:**
+  - `flutter analyze`: **0 issues found** (100% bersih).
+  - `flutter test`: **342/342 tests passed**.
+- **Penyimpangan/Keputusan:** Dicatat pada `docs/DEVIATIONS.md`.
+
+#### F1.6 — Perbaikan Kecil Terkait & Audit Logika
+
+- **Cakupan yang Selesai:**
+  1. **Filter Pengguna Aktif pada `LocalLibraryRepository.getBookById`:**
+     - Menambahkan klausul `user_id = ? AND is_deleted = 0` pada query SQLite untuk memastikan integritas data terisolasi per pengguna aktif.
+  2. **Klarifikasi Perilaku `moveToCollection` Sesuai PRD §7.6:**
+     - Mempertahankan perilaku pemindahan tanpa mereset status/progres baca pengguna. Dokumentasi ringkasan checklist di `docs/PROGRESS.md` disinkronkan.
+  3. **Restorasi Buku Soft-Deleted yang Ditambahkan Kembali:**
+     - Saat buku yang dihapus (`is_deleted = 1`) ditambahkan kembali oleh user, status dipulihkan ke `not_started` dan `current_page = 0` jika buku baru fresh (tanpa progres disengaja).
+  4. **Unifikasi Pola Path Upload Avatar:**
+     - Disatukan menggunakan `SyncService.uploadAvatar(userId, bytes)` dengan pola file berversi timestamp `avatar_${userId}_${timestamp}.jpg` untuk mencegah stale CDN cache.
+  5. **Audit Blok Catch Kosong:**
+     - Menambahkan `debugPrint` terbungkus `kDebugMode` pada blok catch yang berisiko menyembunyikan kegagalan sistem penting (sync pull, score repo, URL launcher, db sanitize, open library fallback) tanpa membocorkan data sensitif.
+- **Pengujian Otomatis (`test/fase_f1_test.dart`):**
+  - TDD: Ditambahkan 3 pengujian spesifik untuk validasi filter `getBookById`, restorasi status bersih buku soft-deleted, dan pemindahan `moveToCollection` tanpa mereset progres.
+- **Hasil Verifikasi Akhir:**
+  - `flutter analyze`: **No issues found!** (100% bersih).
+  - `flutter test`: **345/345 tests passed** (100% lolos di seluruh aplikasi).
+- **Penyimpangan/Keputusan:** Dicatat lengkap pada `docs/DEVIATIONS.md`.
+
+---
+
+### Fase F5 — Keamanan, Kebersihan Proyek, dan Dokumentasi (SELESAI)
+
+- **Cakupan yang Selesai:**
+  1. **Secrets & Keamanan (.env):**
+     - Memastikan `.env` terlindungi dari komit git via `.gitignore` (`.env` dan `*.env`).
+     - Memperbarui `.env.example` dengan seluruh variabel yang dipakai: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_BOOKS_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_FALLBACKS`, `MAP_TILE_URL`.
+     - Memberikan peringatan rotasi API key bagi pemilik proyek jika rahasia pernah ikut terkomit/terekspor dalam arsip zip sebelumnya.
+     - Mendokumentasikan catatan keamanan jujur di README.md: ekstraksi key dari APK (PRD §3), batasan isolasi data klien akibat policy RLS permisif untuk anon (PRD §8.2), dan jalur penguatan masa depan (PostgREST RPC berbasis validasi token).
+  2. **Kebersihan Proyek & Berkas Git:**
+     - Memperketat `.gitignore` agar secara eksplisit mengecualikan `.idea/`, `.idea/**`, `.gradle/`, `android/.gradle/`, `android/local.properties`, `build/`, `.dart_tool/`, `*.iml`.
+     - Memastikan seluruh artefak lokal dan build tidak ter-track dalam riwayat git repo.
+  3. **Penyelarasan Dokumentasi & Kode:**
+     - Memperbaiki bagian "Penelusuran Checklist Verifikasi Akhir":
+       - Kesan & Pesan ditandai berstatus **Draf Read-Only** (Fase S7) dan menunggu input tulisan tangan asli anggota kelompok sebelum pengumpulan tugas akhir.
+       - Mini Game Snake dikonfirmasi menggunakan 15 kolom (`_cols = 15`) dengan baris adaptif proporsional tinggi layar.
+       - Mata uang yang didukung diselaraskan: 5 mata uang (IDR, USD, EUR, JPY, SGD; menghilangkan klaim GBP).
+       - Menghapus referensi ke berkas tes usang (`test/fase_b2_test.dart`) dan merujuk suite tes auth/biometrik aktif (`test/fase_a1_test.dart`, `test/fase_b1_test.dart`, `test/fase_u4d_test.dart`).
+       - Memperbarui jumlah total tes lulus menjadi **345/345 passed** (100%).
+  4. **Pengaturan Android Manifest & Notifikasi:**
+     - Menghapus izin invasif `SCHEDULE_EXACT_ALARM` dan `USE_EXACT_ALARM` dari `android/app/src/main/AndroidManifest.xml` sesuai prinsip PRD §10.5 yang memanfaatkan `AndroidScheduleMode.inexactAllowWhileIdle`.
+     - Memverifikasi `minSdk` (flutter sdk default min 21+), `coreLibraryDesugaring` (`desugar_jdk_libs:2.1.4`), dan `FlutterFragmentActivity` di `MainActivity.kt`.
+  5. **Data Statis Kesan & Pesan Anggota Tim:**
+     - Memperbarui `lib/data/static/team_feedback.dart` dengan peringatan jelas bahwa teks buatan AI yang ada saat ini merupakan draf/placeholder dan wajib diganti dengan kesan & pesan asli tulisan tangan Najmah Cleosa, Melanie Bunga Chintya Pawesty, dan Naftali Margareta sebelum pengumpulan akhir.
+---
+
+### Fase F4 — Konsistensi UI Seluruh Aplikasi (SELESAI)
+
+- **Cakupan yang Selesai:**
+  1. **Audit & Standardisasi Header Halaman:**
+     - Tab shell navigasi utama (`Home`, `Library`, `Add Book`, `Tools`, `Profile`) konsisten menggunakan `AppText.pageHeading(color: ...)` (Fraunces 30).
+     - Seluruh halaman push / sub-halaman (`ScanPage`, `SearchBookDetailPage`, `CollectionBookDetailPage`, `WishlistBookDetailPage`, `ReadingTimerPage`, `ReadingProgressPage`, `FinishedBookPage`, `BookstoreMapPage`, `ReadingLedgerPage`, `EditProfilePage`, `AiChatPage`, `FeedbackPage`, `SnakePage`, `CurrencyConverterPage`, `TimeConverterPage`) menggunakan `AppText.sectionHeading(color: ...)` (Fraunces 20) dengan AppBar dan perilaku back yang seragam.
+  2. **Pembersihan Token Mentah (Colors, Color(0x...), fontSize, radius):**
+     - Ditambahkan token resmi baru pada `AppColors`: `AppColors.trackDark` (`0xFF243336`), `AppColors.amberWarm` (`0xFFC07A15`), `AppColors.amberDark` (`0xFF8A5300`), `AppColors.overlayDark` (`0x8A000000`), dan `AppColors.shadowSubtle` (`0x1F000000`).
+     - Seluruh kemunculan mentah `Colors.white`, `Colors.black*`, `Color(0x...)`, dan `fontSize: 10/11/12/40` di `lib/features` dan `lib/app` telah dibersihkan dan dialihkan ke `AppColors` dan `AppText` (`AppText.code`, `AppText.caption`, `AppText.displayMedium`, `AppText.button`).
+  3. **Standardisasi Margin, Radius, Spacing & Komponen Reusable:**
+     - Margin halaman 24 (`AppSpacing.pagePadding`), jarak antar-seksi 24–32, jarak dalam grup 8–16, padding card 16, radius card 20 (`AppSpacing.cardRadius`), radius input 12 (`AppSpacing.inputRadius`), radius tombol 14 (`AppSpacing.buttonRadius`), dan tinggi kontrol 48 (`AppSpacing.buttonHeight`).
+     - Seluruh tombol memakai `PrimaryButton`, `SecondaryButton`, dan `TertiaryButton`.
+     - Seluruh input memakai `AppTextField` dan `AppDropdown`.
+     - Seluruh kartu memakai `AppCard`, `NotesCard`, `SupportCard`, dan `EmptyStateCard`.
+     - Seluruh dialog memakai `AppDialog` dan snackbar memakai `AppSnackBar`.
+  4. **State Seragam pada Layar Berbasis Data:**
+     - Semua layar data menangani 4 state seragam: `loading` (spinner/skeleton), `empty` (`EmptyStateCard`), `error` (dengan tombol aksi Coba Lagi), dan `success`.
+  5. **Bahasa & Aksesibilitas:**
+     - Konsistensi istilah fitur Inggris (`Home`, `Library`, `Add Book`, `Tools`, `Profile`, `Currently Reading`, `My Collection`, `My Wishlist`) dengan teks sistem bahasa Indonesia.
+     - Penyeragaman label `Password` dan tombol aksi `Login`/`Daftar`. Format tanggal terpusat menggunakan `id_ID`.
+     - Target sentuh minimal ≥ 44×44 px di semua tombol, ikon, dan chip interaktif.
+     - Kontras teks memenuhi WCAG AA di mode terang dan gelap.
+  6. **Pengujian Matriks Responsif Komprehensif (`test/fase_f4_test.dart`):**
+     - Dibuat suite pengujian matriks yang menguji 24 layar aplikasi secara menyeluruh pada 6 kombinasi ukuran & tema:
+       - 360×640 px (skala teks 1.0, Light Mode)
+       - 360×640 px (skala teks 1.3, Dark Mode)
+       - 402×874 px (skala teks 1.0, Light Mode)
+       - 402×874 px (skala teks 1.3, Dark Mode)
+       - 800×1280 px Tablet (skala teks 1.0, Light Mode)
+       - 800×1280 px Tablet (skala teks 1.3, Dark Mode)
+     - Seluruh 24 layar terbukti render bebas `RenderFlex overflow` pada seluruh resolusi dan orientasi.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **No issues found!** (100% bersih).
+  - `flutter test`: **351/351 tests passed** (100% lolos di seluruh aplikasi).
+---
+
+### Perbaikan Bug Sinkronisasi UUID & Pertahanan Sinkronisasi Supabase (SELESAI)
+
+- **Masalah Asal:**
+  - Pembuatan ID non-UUID (`DateTime.now().microsecondsSinceEpoch.toString()`) di `search_book_detail_page.dart` menghasilkan integer string (misal: `"1793167732379150"`).
+  - Saat push ke Supabase Postgres dengan tipe kolom `id UUID PRIMARY KEY`, remote menolak dengan error `PostgrestException: invalid input syntax for type uuid: "1793167732379150" (code 22P02)`.
+  - Akibatnya, baris berstatus `sync_status = 'error'`, `reading_sessions` dengan foreign key ke buku ikut gagal sync, dan data hilang setelah logout karena remote kosong.
+- **Cakupan yang Selesai:**
+  1. **Pembuatan ID di UI:**
+     - Mengganti pembuatan ID di `search_book_detail_page.dart` (Add to Collection & Add to Wishlist) menggunakan `const Uuid().v4()`. Tidak ada perubahan UI atau alur pengguna.
+  2. **Pertahanan Lapisan Repositori Lokal:**
+     - Di `LocalLibraryRepository.addBook`, `LocalReadingRepository.saveSession`, `LocalLedgerRepository.saveBlock`, dan `LocalScoreRepository.saveScore`: jika ID kosong atau berupa angka murni (format timestamp microseconds lama), otomatis di-generate UUID v4 baru.
+  3. **Perbaikan Layanan Sinkronisasi (`SyncService` & `AuthController`):**
+     - Ditambahkan `resetErrorSyncStatus`: baris dengan `sync_status = 'error'` dikembalikan ke `'pending'` saat startup, login, resume, dan sebelum push manual.
+     - `refreshPendingCount` kini menghitung baris `pending` dan `error`.
+     - `SupabaseSyncRemoteSource.upsert` melempar `StateError` jika klien Supabase null / belum terhubung.
+     - Di `AuthController.checkSession`, `_revalidateInBackground`, `login`, dan `register`: `pushPending` dipanggil **sebelum** `pullAll`.
+     - Di `AuthController.logout`: jika logout otomatis tanpa dialog dan masih ada baris `pending` / `error`, `clearUserData` dilewati agar data lokal pengguna tetap aman terisolasi per `user_id`. Jika pengguna eksplisit menyetujui logout lewat dialog, `clearUserData` dijalankan sesuai PRD §7.8.
+  4. **Migrasi Database SQLite Lokal (v2 -> v3):**
+     - Menaikkan versi database di `DatabaseHelper` dari 2 ke 3.
+     - Ditambahkan `_migrateToV3`: memindai `user_books` dengan ID non-UUID. Jika belum tercatat di `ledger_blocks.data_json`, ID diperbarui ke UUID v4 baru, foreign key `reading_sessions.user_book_id` diperbarui, dan status diset ke `pending`. Jika sudah dirujuk ledger, ID dipertahankan demi menjaga hash chain dan dicatat di `docs/DEVIATIONS.md`.
+  5. **Pengujian Unit (`test/sync_uuid_bug_test.dart`):**
+     - Tes 5a: tambah buku via repository menghasilkan UUID v4 valid.
+     - Tes 5b: push ke remote strict UUID berhasil dengan status `synced`.
+     - Tes 5c: pemulihan baris error ke pending lalu berhasil terkirim.
+     - Tes 5d: simulasi migrasi v3 & persistensi data buku serta reading session.
+- **Hasil Verifikasi:**
+  - `flutter analyze`: **0 issues found** (bersih).
+  - `flutter test`: **355/355 tests passed** (100% lolos).

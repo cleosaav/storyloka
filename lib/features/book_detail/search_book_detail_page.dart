@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -141,7 +142,7 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
         final now = DateTime.now();
         // Simpan data gabungan (detail yang lengkap), bukan data awal yang minim — Fase S3
         final userBook = UserBook(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          id: const Uuid().v4(),
           userId: userId,
           googleBooksId: _book.googleBooksId,
           title: _book.title,
@@ -210,7 +211,7 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
       final now = DateTime.now();
       // Simpan data gabungan (detail yang lengkap), bukan data awal yang minim — Fase S3
       final userBook = UserBook(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: const Uuid().v4(),
         userId: userId,
         googleBooksId: _book.googleBooksId,
         title: _book.title,
@@ -352,7 +353,7 @@ class _SearchBookDetailPageState extends State<SearchBookDetailPage> {
       appBar: AppBar(
         title: Text(
           'Book Detail',
-          style: AppText.pageHeading(
+          style: AppText.sectionHeading(
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),

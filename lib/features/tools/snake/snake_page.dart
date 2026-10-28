@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -151,7 +152,9 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
 
         final newHigh = await repo.getHighScore(_gameKey);
         if (mounted) setState(() => _highScore = newHigh);
-      } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) debugPrint('[SnakePage] Gagal simpan skor: $e');
+      }
     }
 
     if (mounted) _showGameOverSheet();

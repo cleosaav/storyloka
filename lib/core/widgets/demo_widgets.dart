@@ -81,7 +81,7 @@ class DemoModeChip extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: const BoxDecoration(
-                color: Color(0xFFC07A15),
+                color: AppColors.amberWarm,
                 shape: BoxShape.circle,
               ),
             ),
@@ -89,7 +89,7 @@ class DemoModeChip extends StatelessWidget {
             Text(
               'Mode demo',
               style: AppText.caption(
-                color: const Color(0xFF8A5300),
+                color: AppColors.amberDark,
               ).copyWith(
                 fontWeight: FontWeight.w600,
               ),

@@ -1,7 +1,19 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
-/// DatabaseHelper untuk SQLite lokal — PRD §8.1 (versi 1).
+final _uuidRegex = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
+bool _isUuid(String? s) {
+  if (s == null || s.trim().isEmpty) return false;
+  return _uuidRegex.hasMatch(s.trim());
+}
+
+/// DatabaseHelper untuk SQLite lokal — PRD §8.1.
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
@@ -9,14 +21,20 @@ class DatabaseHelper {
 
   DatabaseHelper._internal();
 
+  @visibleForTesting
+  DatabaseHelper.forTesting();
+
   Database? _db;
+  static Database? _testDb;
 
   /// Setter untuk pengujian dengan database in-memory / mock.
   static void setTestDatabase(Database? db) {
+    _testDb = db;
     _instance._db = db;
   }
 
   Future<Database> get database async {
+    if (_testDb != null && _testDb!.isOpen) return _testDb!;
     if (_db != null && _db!.isOpen) return _db!;
     _db = await _initDb();
     return _db!;
@@ -28,13 +46,16 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _migrateToV2(db);
+        }
+        if (oldVersion < 3) {
+          await _migrateToV3(db);
         }
       },
       onOpen: (db) async {
@@ -49,6 +70,72 @@ class DatabaseHelper {
     await _sanitizeInvalidUserData(db);
   }
 
+  /// Migrasi skema database versi 3 — Perbaikan ID non-UUID (UUID v4).
+  /// Untuk baris user_books dengan ID non-UUID yang BELUM tercatat di ledger_blocks.data_json,
+  /// ganti ID dengan UUID v4 baru, perbarui reading_sessions.user_book_id, dan set sync_status='pending'.
+  /// Untuk yang sudah dirujuk ledger, ID dipertahankan demi menjaga hash rantai.
+  Future<void> _migrateToV3(Database db) async {
+    try {
+      final userBooks = await db.query('user_books');
+      final ledgerRows = await db.query('ledger_blocks');
+
+      // Kumpulkan semua user_book_id yang sudah terkunci di ledger
+      final lockedBookIds = <String>{};
+      for (final l in ledgerRows) {
+        final raw = l['data_json'];
+        if (raw != null) {
+          try {
+            final data = raw is String ? jsonDecode(raw) : raw;
+            if (data is Map && data['user_book_id'] != null) {
+              lockedBookIds.add(data['user_book_id'].toString());
+            }
+          } catch (_) {}
+        }
+      }
+
+      const uuidGen = Uuid();
+      for (final book in userBooks) {
+        final oldId = book['id']?.toString() ?? '';
+        if (oldId.isNotEmpty && !_isUuid(oldId)) {
+          if (lockedBookIds.contains(oldId)) {
+            // Sudah tercatat di ledger, pertahankan ID agar hash rantai tidak rusak
+            if (kDebugMode) {
+              debugPrint('[DatabaseHelper] Migrasi V3: skip buku $oldId karena sudah tercatat di ledger.');
+            }
+          } else {
+            // Ganti dengan UUID v4 baru
+            final newId = uuidGen.v4();
+            await db.transaction((txn) async {
+              await txn.update(
+                'user_books',
+                {
+                  'id': newId,
+                  'sync_status': 'pending',
+                  'updated_at': DateTime.now().toUtc().toIso8601String(),
+                },
+                where: 'id = ?',
+                whereArgs: [oldId],
+              );
+              await txn.update(
+                'reading_sessions',
+                {'user_book_id': newId, 'sync_status': 'pending'},
+                where: 'user_book_id = ?',
+                whereArgs: [oldId],
+              );
+            });
+            if (kDebugMode) {
+              debugPrint('[DatabaseHelper] Migrasi V3: buku non-UUID $oldId diperbarui menjadi $newId.');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[DatabaseHelper] Migrasi V3 gagal: $e');
+      }
+    }
+  }
+
   /// Menghapus entri percobaan lama dengan user_id non-UUID tanpa menghapus data pengguna valid.
   Future<void> _sanitizeInvalidUserData(Database db) async {
     try {
@@ -58,7 +145,9 @@ class DatabaseHelper {
            OR length(user_id) != 36
            OR user_id NOT LIKE '%-%-%-%-%';
       ''');
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) debugPrint('[DatabaseHelper] _sanitizeInvalidUserData gagal: $e');
+    }
   }
 
   /// Membuat semua tabel dan indeks sesuai PRD §8.1.

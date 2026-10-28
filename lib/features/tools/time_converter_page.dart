@@ -388,12 +388,15 @@ class _ResultCard extends StatelessWidget {
           children: [
             // Zone label
             SizedBox(
-              width: 72,
+              width: 88,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     result.zone.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
                     style: AppText.cardHeading(
                       color: isSource
                           ? primaryColor
@@ -403,6 +406,9 @@ class _ResultCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     cleanOffset,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                     style: AppText.caption(
                       color: isDark ? AppColors.mutedDark : AppColors.mutedGray,
                     ),

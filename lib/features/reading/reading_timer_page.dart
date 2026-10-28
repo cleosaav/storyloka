@@ -437,9 +437,10 @@ class _ReadingTimerPageState extends State<ReadingTimerPage> {
                             fit: BoxFit.scaleDown,
                             child: Text(
                               timeFormatted,
-                              style: AppText.displayLarge(
+                              style: AppText.displayMedium(
                                 color: isDark ? AppColors.inkDark : AppColors.ink,
-                              ).copyWith(fontSize: 40, fontWeight: FontWeight.bold),
+                                fontSize: 40,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 4),

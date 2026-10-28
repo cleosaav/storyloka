@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -33,7 +34,9 @@ class _ToolsPageState extends State<ToolsPage> {
       final repo = context.read<ScoreRepository>();
       final hs = await repo.getHighScore('snake');
       if (mounted) setState(() => _snakeHighScore = hs);
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ToolsPage] _loadHighScore gagal: $e');
+    }
   }
 
   @override

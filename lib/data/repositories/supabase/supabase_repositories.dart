@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/secure_session_store.dart';
+import '../../../core/services/sync_service.dart';
 import '../../models/app_user.dart';
 import '../auth_repository.dart';
 import '../profile_repository.dart';
@@ -47,15 +48,27 @@ String _mapAuthException(Object error) {
   if (str.contains('SESSION_INVALID')) {
     return 'Sesi Anda telah berakhir. Silakan masuk kembali.';
   }
-  if (str.contains('SocketException') ||
-      str.contains('Failed host lookup') ||
-      str.contains('Network') ||
+  // Deteksi masalah TLS / Handshake
+  if (error is HandshakeException ||
+      error is TlsException ||
       str.contains('HandshakeException') ||
       str.contains('TlsException') ||
+      str.contains('CERTIFICATE_VERIFY_FAILED')) {
+    return 'Koneksi aman gagal (TLS/HandshakeException). Periksa pengaturan Private DNS atau tanggal dan jam perangkat Anda.';
+  }
+
+  // Deteksi masalah koneksi internet / offline
+  if (error is SocketException ||
+      str.contains('SocketException') ||
+      str.contains('Failed host lookup') ||
+      str.contains('Network') ||
+      str.contains('Network is unreachable') ||
+      str.contains('Connection refused') ||
       str.contains('Connection terminated') ||
       str.contains('Connection closed') ||
-      str.contains('ClientException')) {
-    return 'Koneksi internet HP ke Supabase terputus (HandshakeException). Coba ganti ke paket data seluler atau aktifkan Private DNS (dns.google) di HP.';
+      str.contains('ClientException') ||
+      str.contains('TimeoutException')) {
+    return 'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.';
   }
   if (str.toLowerCase().contains('does not exist') ||
       str.toLowerCase().contains('schema cache') ||
@@ -133,10 +146,10 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<AppUser?> validateSession() async {
-    try {
-      final token = await sessionStore.getToken();
-      if (token == null || token.isEmpty) return null;
+    final token = await sessionStore.getToken();
+    if (token == null || token.isEmpty) return null;
 
+    try {
       final res = await client.rpc(
         'validate_session',
         params: {'p_token': token},
@@ -147,9 +160,18 @@ class SupabaseAuthRepository implements AuthRepository {
       await sessionStore.saveUser(user);
       return user;
     } catch (e) {
-      // Jika token invalid di server, bersihkan session lokal
-      await sessionStore.clearSession();
-      return null;
+      // Hapus sesi HANYA jika server menjawab SESSION_INVALID (PRD §7.1)
+      final isSessionInvalid = (e is PostgrestException &&
+              e.message.toUpperCase().contains('SESSION_INVALID')) ||
+          e.toString().contains('SESSION_INVALID');
+
+      if (isSessionInvalid) {
+        await sessionStore.clearSession();
+        return null;
+      }
+
+      // Untuk error jaringan/timeout/lainnya, kembalikan user dari cache sessionStore.getUser() jika ada token
+      return await sessionStore.getUser();
     }
   }
 
@@ -228,27 +250,26 @@ class SupabaseProfileRepository implements ProfileRepository {
     String? publicAvatarUrl = avatarPath;
 
     // Unggah file avatar ke Supabase Storage bucket 'avatars' jika berupa file lokal
+    // Menggunakan SyncService.instance.uploadAvatar dengan nama berversi (timestamp)
+    // agar konsisten satu pola dan tidak tertahan cache CDN (PRD §8.2 & F1.6).
     if (avatarPath != null && !avatarPath.startsWith('http')) {
       try {
         final file = File(avatarPath);
         if (await file.exists()) {
           final user = await sessionStore.getUser();
           final userId = user?.id ?? 'user';
-          final storagePath = '$userId/avatar.jpg';
-          final bytes = await file.readAsBytes();
-
-          await client.storage.from('avatars').uploadBinary(
-                storagePath,
-                bytes,
-                fileOptions: const FileOptions(
-                  upsert: true,
-                  contentType: 'image/jpeg',
-                ),
-              );
-
-          publicAvatarUrl = client.storage.from('avatars').getPublicUrl(storagePath);
+          final uploadedUrl = await SyncService.instance.uploadAvatar(
+            userId: userId,
+            file: file,
+          );
+          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+            publicAvatarUrl = uploadedUrl;
+          }
         }
-      } catch (_) {
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[SupabaseProfileRepository] Gagal unggah avatar: $e');
+        }
         // Fallback: gunakan path lokal jika penyimpanan remote belum bisa dijangkau
         publicAvatarUrl = avatarPath;
       }

@@ -7,7 +7,7 @@ import 'package:storyloka/core/services/sync_service.dart';
 import 'package:storyloka/data/database_helper.dart';
 
 /// FakeSyncRemoteSource untuk menguji SyncService di unit test tanpa koneksi internet.
-class FakeSyncRemoteSource implements SyncRemoteSource {
+class FakeSyncRemoteSource extends SyncRemoteSource {
   final List<String> pushOrder = [];
   final Map<String, List<Map<String, dynamic>>> tables = {
     'user_books': [],

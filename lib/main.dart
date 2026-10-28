@@ -18,6 +18,9 @@ Future<void> main() async {
   // Inisialisasi NotificationService secara eksplisit sebelum runApp — PRD §10.5 & Bagian 12
   await NotificationService.instance.initialize();
 
+  // Muat preferensi tema sebelum runApp agar tidak ada kedipan tema — PRD §8.1 & Fase F1.2
+  final themeController = await ThemeController.create();
+
   // Muat file .env sebagai satu-satunya titik akses konfigurasi — PRD §3
   await Env.load();
 
@@ -36,7 +39,9 @@ Future<void> main() async {
 
   runApp(
     MultiProvider(
-      providers: buildAppProviders(),
+      providers: buildAppProviders(
+        themeController: themeController,
+      ),
       child: const StoryLokaApp(),
     ),
   );

@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
@@ -57,10 +58,13 @@ class AppConfig {
   }
 }
 
-/// Pengontrol tema dinamis (Light / Dark / System/Auto) — PRD §4.7 & §10.4.
+/// Pengontrol tema dinamis (Light / Dark / System/Auto) — PRD §4.7, §8.1 & §10.4.
 class ThemeController extends ChangeNotifier {
+  static const String prefKey = 'theme_mode';
+
   ThemeMode _themeMode = ThemeMode.light;
   ThemeMode? _sensorResolvedMode;
+  SharedPreferences? _prefs;
 
   ThemeMode get themeMode {
     if (_themeMode == ThemeMode.system && _sensorResolvedMode != null) {
@@ -75,22 +79,90 @@ class ThemeController extends ChangeNotifier {
   bool get isDark => themeMode == ThemeMode.dark;
   bool get isAuto => _themeMode == ThemeMode.system;
 
-  void setThemeMode(ThemeMode mode) {
+  ThemeController({
+    ThemeMode initialMode = ThemeMode.light,
+    SharedPreferences? prefs,
+  }) : _themeMode = initialMode {
+    _prefs = prefs;
+    if (_themeMode == ThemeMode.system) {
+      _startSensorListening();
+    }
+  }
+
+  /// Muat preferensi tema dari SharedPreferences saat startup sebelum runApp — PRD §8.1.
+  static Future<ThemeController> create({SharedPreferences? prefs}) async {
+    final p = prefs ?? await SharedPreferences.getInstance();
+    final raw = p.getString(prefKey);
+    final mode = parseThemeMode(raw);
+    return ThemeController(initialMode: mode, prefs: p);
+  }
+
+  static ThemeMode parseThemeMode(String? raw) {
+    if (raw == null) return ThemeMode.light;
+    switch (raw.toLowerCase()) {
+      case 'dark':
+        return ThemeMode.dark;
+      case 'auto':
+      case 'system':
+        return ThemeMode.system;
+      case 'light':
+      default:
+        return ThemeMode.light;
+    }
+  }
+
+  static String serializeThemeMode(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.dark:
+        return 'dark';
+      case ThemeMode.system:
+        return 'auto';
+      case ThemeMode.light:
+        return 'light';
+    }
+  }
+
+  Future<void> loadThemeMode() async {
+    final p = _prefs ??= await SharedPreferences.getInstance();
+    final raw = p.getString(prefKey);
+    if (raw != null) {
+      setThemeMode(parseThemeMode(raw), save: false);
+    }
+  }
+
+  void setThemeMode(ThemeMode mode, {bool save = true}) {
     if (_themeMode != mode) {
       _themeMode = mode;
       _sensorResolvedMode = null;
       if (mode == ThemeMode.system) {
-        LightSensorService.instance.startListening(
-          onThemeChanged: (resolved) {
-            _sensorResolvedMode = resolved;
-            notifyListeners();
-          },
-        );
+        _startSensorListening();
       } else {
         LightSensorService.instance.stopListening();
       }
       notifyListeners();
+
+      if (save) {
+        _saveToPrefs(mode);
+      }
+    } else if (mode == ThemeMode.system && !LightSensorService.instance.isAutoActive) {
+      _startSensorListening();
     }
+  }
+
+  void _startSensorListening() {
+    LightSensorService.instance.startListening(
+      onThemeChanged: (resolved) {
+        _sensorResolvedMode = resolved;
+        notifyListeners();
+      },
+    );
+  }
+
+  Future<void> _saveToPrefs(ThemeMode mode) async {
+    try {
+      final p = _prefs ??= await SharedPreferences.getInstance();
+      await p.setString(prefKey, serializeThemeMode(mode));
+    } catch (_) {}
   }
 
   void toggleTheme() {
@@ -111,10 +183,11 @@ List<SingleChildWidget> buildAppProviders({
   BookSearchRepository? bookSearchRepo,
   BiometricService? biometricService,
   SupabaseClient? supabaseClient,
+  ThemeController? themeController,
 }) {
   // Demo controls untuk kDebugMode
   final demoControls = DemoControls();
-  final themeController = ThemeController();
+  final tController = themeController ?? ThemeController();
   final sessionStore = SecureSessionStore();
   final bioService = biometricService ?? BiometricService();
   final isFake = useFakeData ?? AppConfig.useFakeData;
@@ -147,7 +220,7 @@ List<SingleChildWidget> buildAppProviders({
     return [
       Provider<SecureSessionStore>.value(value: sessionStore),
       Provider<BiometricService>.value(value: bioService),
-      ChangeNotifierProvider<ThemeController>.value(value: themeController),
+      ChangeNotifierProvider<ThemeController>.value(value: tController),
       ChangeNotifierProvider<DemoControls>.value(value: demoControls),
       ChangeNotifierProvider<AuthController>.value(value: authController),
       Provider<AuthRepository>.value(value: fakeAuth),
@@ -258,7 +331,7 @@ List<SingleChildWidget> buildAppProviders({
     return [
       Provider<SecureSessionStore>.value(value: sessionStore),
       Provider<BiometricService>.value(value: bioService),
-      ChangeNotifierProvider<ThemeController>.value(value: themeController),
+      ChangeNotifierProvider<ThemeController>.value(value: tController),
       ChangeNotifierProvider<DemoControls>.value(value: demoControls),
       ChangeNotifierProvider<AuthController>.value(value: authController),
       Provider<DatabaseHelper>.value(value: helper),

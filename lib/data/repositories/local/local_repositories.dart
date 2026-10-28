@@ -98,10 +98,11 @@ class LocalLibraryRepository implements LibraryRepository {
   @override
   Future<UserBook?> getBookById(String id) async {
     final db = await dbHelper.database;
+    final userId = await _getUserId();
     final maps = await db.query(
       'user_books',
-      where: 'id = ? AND is_deleted = 0',
-      whereArgs: [id],
+      where: 'id = ? AND user_id = ? AND is_deleted = 0',
+      whereArgs: [id, userId],
       limit: 1,
     );
 
@@ -131,36 +132,39 @@ class LocalLibraryRepository implements LibraryRepository {
     final userId = await _getUserId();
     final now = DateTime.now().toUtc();
 
-    // Pastikan user_id sesuai user aktif
-    final targetBook = book.userId.isEmpty || book.userId == 'demo_user'
-        ? UserBook(
-            id: book.id.isEmpty ? _uuid.v4() : book.id,
-            userId: userId,
-            googleBooksId: book.googleBooksId,
-            title: book.title,
-            authors: book.authors,
-            genre: book.genre,
-            isbn: book.isbn,
-            publisher: book.publisher,
-            pageCount: book.pageCount,
-            coverUrl: book.coverUrl,
-            synopsis: book.synopsis,
-            priceAmount: book.priceAmount,
-            priceCurrency: book.priceCurrency,
-            listType: book.listType,
-            status: book.status,
-            currentPage: book.currentPage,
-            rating: book.rating,
-            review: book.review,
-            startedAt: book.startedAt,
-            finishedAt: book.finishedAt,
-            lastReadAt: book.lastReadAt,
-            isDeleted: false,
-            createdAt: book.createdAt,
-            updatedAt: now,
-            syncStatus: 'pending',
-          )
-        : book;
+    // Pastikan user_id sesuai user aktif dan id merupakan UUID valid (PRD §8.1)
+    // Jika id kosong atau berupa angka murni (microseconds timestamp seperti bug lama), buat UUID v4 baru.
+    final isMicrosecondsOrEmpty = book.id.trim().isEmpty || int.tryParse(book.id.trim()) != null;
+    final resolvedBookId = isMicrosecondsOrEmpty ? _uuid.v4() : book.id;
+    final resolvedUserId = (book.userId.isEmpty || book.userId == 'demo_user') ? userId : book.userId;
+
+    final targetBook = UserBook(
+      id: resolvedBookId,
+      userId: resolvedUserId,
+      googleBooksId: book.googleBooksId,
+      title: book.title,
+      authors: book.authors,
+      genre: book.genre,
+      isbn: book.isbn,
+      publisher: book.publisher,
+      pageCount: book.pageCount,
+      coverUrl: book.coverUrl,
+      synopsis: book.synopsis,
+      priceAmount: book.priceAmount,
+      priceCurrency: book.priceCurrency,
+      listType: book.listType,
+      status: book.status,
+      currentPage: book.currentPage,
+      rating: book.rating,
+      review: book.review,
+      startedAt: book.startedAt,
+      finishedAt: book.finishedAt,
+      lastReadAt: book.lastReadAt,
+      isDeleted: false,
+      createdAt: book.createdAt,
+      updatedAt: now,
+      syncStatus: 'pending',
+    );
 
     // Cek apakah buku sudah pernah ada untuk user ini (termasuk yang soft-deleted)
     final existing = await db.query(
@@ -173,10 +177,35 @@ class LocalLibraryRepository implements LibraryRepository {
     if (existing.isNotEmpty) {
       final oldBook = UserBook.fromMap(existing.first);
       if (oldBook.isDeleted) {
-        // Restore buku yang terhapus
-        final restored = oldBook.copyWith(
-          isDeleted: false,
+        // Restore buku yang terhapus:
+        // Bersihkan status baca kembali ke awal (not_started, current_page = 0)
+        // kecuali jika targetBook memang membawa progres yang disengaja.
+        final hasExplicitProgress = targetBook.currentPage > 0 ||
+            targetBook.status != BookStatus.notStarted;
+        final restored = UserBook(
+          id: oldBook.id,
+          userId: oldBook.userId,
+          googleBooksId: oldBook.googleBooksId,
+          title: oldBook.title,
+          authors: oldBook.authors,
+          genre: oldBook.genre,
+          isbn: oldBook.isbn,
+          publisher: oldBook.publisher,
+          pageCount: oldBook.pageCount,
+          coverUrl: oldBook.coverUrl,
+          synopsis: oldBook.synopsis,
+          priceAmount: oldBook.priceAmount,
+          priceCurrency: oldBook.priceCurrency,
           listType: targetBook.listType,
+          status: hasExplicitProgress ? targetBook.status : BookStatus.notStarted,
+          currentPage: hasExplicitProgress ? targetBook.currentPage : 0,
+          rating: hasExplicitProgress ? targetBook.rating : null,
+          review: hasExplicitProgress ? targetBook.review : null,
+          startedAt: hasExplicitProgress ? targetBook.startedAt : null,
+          finishedAt: hasExplicitProgress ? targetBook.finishedAt : null,
+          lastReadAt: hasExplicitProgress ? targetBook.lastReadAt : null,
+          isDeleted: false,
+          createdAt: oldBook.createdAt,
           updatedAt: now,
           syncStatus: 'pending',
         );
@@ -316,18 +345,21 @@ class LocalReadingRepository implements ReadingRepository {
     final db = await dbHelper.database;
     final userId = await _getUserId();
 
-    final sessionToSave = session.userId.isEmpty || session.userId == 'demo_user'
-        ? ReadingSession(
-            id: session.id.isEmpty ? _uuid.v4() : session.id,
-            userId: userId,
-            userBookId: session.userBookId,
-            startedAt: session.startedAt,
-            endedAt: session.endedAt,
-            durationSeconds: session.durationSeconds,
-            createdAt: session.createdAt,
-            syncStatus: 'pending',
-          )
-        : session;
+    final isMicrosecondsOrEmpty = session.id.trim().isEmpty || int.tryParse(session.id.trim()) != null;
+    final resolvedSessionId = isMicrosecondsOrEmpty ? _uuid.v4() : session.id;
+    final resolvedUserId =
+        (session.userId.isEmpty || session.userId == 'demo_user') ? userId : session.userId;
+
+    final sessionToSave = ReadingSession(
+      id: resolvedSessionId,
+      userId: resolvedUserId,
+      userBookId: session.userBookId,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      durationSeconds: session.durationSeconds,
+      createdAt: session.createdAt,
+      syncStatus: 'pending',
+    );
 
     await db.insert(
       'reading_sessions',
@@ -415,20 +447,23 @@ class LocalLedgerRepository implements LedgerRepository {
     final db = await dbHelper.database;
     final userId = await _getUserId();
 
-    final blockToSave = block.userId.isEmpty || block.userId == 'demo_user'
-        ? LedgerBlock(
-            id: block.id.isEmpty ? _uuid.v4() : block.id,
-            userId: userId,
-            blockIndex: block.blockIndex,
-            timestamp: block.timestamp,
-            dataJson: block.dataJson,
-            previousHash: block.previousHash,
-            nonce: block.nonce,
-            hash: block.hash,
-            createdAt: block.createdAt,
-            syncStatus: 'pending',
-          )
-        : block;
+    final isMicrosecondsOrEmpty = block.id.trim().isEmpty || int.tryParse(block.id.trim()) != null;
+    final resolvedBlockId = isMicrosecondsOrEmpty ? _uuid.v4() : block.id;
+    final resolvedUserId =
+        (block.userId.isEmpty || block.userId == 'demo_user') ? userId : block.userId;
+
+    final blockToSave = LedgerBlock(
+      id: resolvedBlockId,
+      userId: resolvedUserId,
+      blockIndex: block.blockIndex,
+      timestamp: block.timestamp,
+      dataJson: block.dataJson,
+      previousHash: block.previousHash,
+      nonce: block.nonce,
+      hash: block.hash,
+      createdAt: block.createdAt,
+      syncStatus: 'pending',
+    );
 
     await db.insert(
       'ledger_blocks',
@@ -514,16 +549,19 @@ class LocalScoreRepository implements ScoreRepository {
     final db = await dbHelper.database;
     final userId = await _getUserId();
 
-    final scoreToSave = score.userId.isEmpty || score.userId == 'demo_user'
-        ? GameScore(
-            id: score.id.isEmpty ? _uuid.v4() : score.id,
-            userId: userId,
-            game: score.game,
-            score: score.score,
-            playedAt: score.playedAt,
-            syncStatus: 'pending',
-          )
-        : score;
+    final isMicrosecondsOrEmpty = score.id.trim().isEmpty || int.tryParse(score.id.trim()) != null;
+    final resolvedScoreId = isMicrosecondsOrEmpty ? _uuid.v4() : score.id;
+    final resolvedUserId =
+        (score.userId.isEmpty || score.userId == 'demo_user') ? userId : score.userId;
+
+    final scoreToSave = GameScore(
+      id: resolvedScoreId,
+      userId: resolvedUserId,
+      game: score.game,
+      score: score.score,
+      playedAt: score.playedAt,
+      syncStatus: 'pending',
+    );
 
     await db.insert(
       'game_scores',

@@ -20,6 +20,7 @@ class NotificationService {
   set plugin(FlutterLocalNotificationsPlugin p) => _plugin = p;
 
   bool _isInitialized = false;
+  bool _pluginAvailable = false;
   String _currentTimezone = 'UTC';
 
   String get currentTimezone => _currentTimezone;
@@ -45,6 +46,12 @@ class NotificationService {
   /// Inisialisasi plugin notifikasi dan pembuatan channels Android secara eksplisit.
   Future<void> initialize() async {
     if (_isInitialized) return;
+
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      _isInitialized = true;
+      _pluginAvailable = false;
+      return;
+    }
 
     try {
       tz_data.initializeTimeZones();
@@ -123,7 +130,10 @@ class NotificationService {
         );
       }
       _isInitialized = true;
+      _pluginAvailable = true;
     } catch (e) {
+      _isInitialized = true;
+      _pluginAvailable = false;
       debugPrint('NotificationService init error (mock or unsupported): $e');
     }
   }
@@ -266,9 +276,14 @@ class NotificationService {
   /// Batalkan pengingat harian.
   Future<void> cancelDailyReadingReminder() async {
     await initialize();
+    if (!_pluginAvailable) return;
     try {
       await _plugin.cancel(id: _reminderNotificationId);
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[NotificationService] Gagal membatalkan pengingat harian: $e');
+      }
+    }
   }
 
   /// Tampilkan notifikasi stopwatch sesi membaca yang sedang berlangsung — PRD §10.5.
@@ -360,9 +375,14 @@ class NotificationService {
   /// Batalkan notifikasi stopwatch sesi membaca.
   Future<void> cancelStopwatchNotification() async {
     await initialize();
+    if (!_pluginAvailable) return;
     try {
       await _plugin.cancel(id: _stopwatchNotificationId);
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[NotificationService] Gagal membatalkan notifikasi stopwatch: $e');
+      }
+    }
   }
 
   /// Kirim notifikasi tes langsung sekarang — PRD §10.5 & QA Debug.

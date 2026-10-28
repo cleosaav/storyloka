@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../app/providers.dart';
 import '../../core/services/ledger_service.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/services/secure_session_store.dart';
 import '../../core/services/sync_service.dart';
 import '../../core/widgets/demo_widgets.dart';
+import '../../data/database_helper.dart';
 import '../../data/models/app_user.dart';
 import '../../data/repositories/auth_repository.dart';
 
@@ -16,6 +18,7 @@ class AuthController extends ChangeNotifier {
   final SecureSessionStore sessionStore;
   final DemoControls demoControls;
   final LedgerService? ledgerService;
+  final DatabaseHelper dbHelper;
 
   AppUser? _currentUser;
   bool _isLoading = false;
@@ -29,7 +32,8 @@ class AuthController extends ChangeNotifier {
     required this.sessionStore,
     required this.demoControls,
     this.ledgerService,
-  });
+    DatabaseHelper? dbHelper,
+  }) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
   AppUser? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
@@ -86,10 +90,23 @@ class AuthController extends ChangeNotifier {
         } else {
           _isBiometricLocked = false;
         }
-        // PRD §10.2: Genesis block dibuat saat sesi tervalidasi jika belum ada
+        // Panggil pushPending SEBELUM pullAll agar data lokal terkirim terlebih dahulu
+        try {
+          await SyncService.instance.pushPending(userId: user.id);
+          await SyncService.instance.pullAll(user.id);
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AuthController] Gagal sync saat checkSession: $e');
+          }
+        }
+        // PRD §10.2: Genesis block dibuat saat sesi tervalidasi jika setelah pull masih belum ada
         try {
           await ledgerService?.ensureGenesisBlock(user.id);
-        } catch (_) {}
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AuthController] Gagal ensureGenesisBlock saat checkSession: $e');
+          }
+        }
       } else {
         _currentUser = null;
         _isBiometricLocked = false;
@@ -98,17 +115,75 @@ class AuthController extends ChangeNotifier {
       _hasSplashTimeout = false;
     } on TimeoutException {
       // Timeout 10 detik terjadi
-      _hasSplashTimeout = true;
-      _errorMessage = 'Koneksi ke server gagal (timeout 10 detik). Periksa jaringan Anda.';
-      // Jangan set _isInitialized = true agar tetap berada di Splash menampilkan error state
+      final cachedUser = await sessionStore.getUser();
+      final hasToken = await sessionStore.hasSession();
+
+      if (cachedUser != null && hasToken) {
+        // F1.1: timeout 10 detik tidak boleh membuat user menunggu di splash saat sudah ada sesi lokal;
+        // lanjut ke Home dengan sesi lokal dan validasi ulang di latar belakang.
+        _currentUser = cachedUser;
+        final bioEnabled = await sessionStore.isBiometricEnabled();
+        _isBiometricLocked = bioEnabled && !demoControls.bypassBiometric;
+        _isInitialized = true;
+        _hasSplashTimeout = false;
+
+        unawaited(_revalidateInBackground());
+      } else {
+        _hasSplashTimeout = true;
+        _errorMessage = 'Koneksi ke server gagal (timeout 10 detik). Periksa jaringan Anda.';
+        // Jangan set _isInitialized = true agar tetap berada di Splash menampilkan error state
+      }
     } catch (_) {
-      _currentUser = null;
-      _isBiometricLocked = false;
-      _isInitialized = true;
-      _hasSplashTimeout = false;
+      final cachedUser = await sessionStore.getUser();
+      final hasToken = await sessionStore.hasSession();
+
+      if (cachedUser != null && hasToken) {
+        _currentUser = cachedUser;
+        final bioEnabled = await sessionStore.isBiometricEnabled();
+        _isBiometricLocked = bioEnabled && !demoControls.bypassBiometric;
+        _isInitialized = true;
+        _hasSplashTimeout = false;
+
+        unawaited(_revalidateInBackground());
+      } else {
+        _currentUser = null;
+        _isBiometricLocked = false;
+        _isInitialized = true;
+        _hasSplashTimeout = false;
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Validasi ulang sesi di latar belakang bila offline/timeout selesai (PRD §7.1).
+  Future<void> _revalidateInBackground() async {
+    try {
+      final validatedUser = await authRepository.validateSession();
+      if (validatedUser == null) {
+        // Jika server menyatakan tidak valid -> logout paksa (PRD §7.1)
+        _currentUser = null;
+        _isBiometricLocked = false;
+        _errorMessage = 'Sesi Anda telah berakhir. Silakan masuk kembali.';
+        notifyListeners();
+      } else {
+        // F1.3: Sinkronisasi data saat revalidasi latar belakang sukses (push sebelum pull)
+        try {
+          await SyncService.instance.pushPending(userId: validatedUser.id);
+          await SyncService.instance.pullAll(validatedUser.id);
+          await ledgerService?.ensureGenesisBlock(validatedUser.id);
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AuthController] Gagal sync/genesis latar belakang: $e');
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AuthController] Re-validasi latar belakang gagal: $e');
+      }
+      // Abaikan kegagalan jaringan saat background re-validation
     }
   }
 
@@ -139,13 +214,24 @@ class AuthController extends ChangeNotifier {
       _isBiometricLocked = false;
       _errorMessage = null;
 
-      // PRD §10.2: Genesis block dibuat saat login jika belum ada
+      // PRD §8.3 & F1.3: Push data lokal pending terlebih dahulu, baru pull dari server
+      try {
+        await SyncService.instance.pushPending(userId: user.id);
+        await SyncService.instance.pullAll(user.id);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal sync setelah login: $e');
+        }
+      }
+
+      // PRD §10.2: Genesis block dibuat saat login jika setelah pull masih belum ada
       try {
         await ledgerService?.ensureGenesisBlock(user.id);
-      } catch (_) {}
-
-      // PRD §8.3: Pull data setelah login berhasil
-      SyncService.instance.pullAll(user.id);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal ensureGenesisBlock setelah login: $e');
+        }
+      }
 
       return true;
     } catch (e) {
@@ -192,13 +278,24 @@ class AuthController extends ChangeNotifier {
       _isBiometricLocked = false;
       _errorMessage = null;
 
-      // PRD §10.2: Genesis block dibuat saat register jika belum ada
+      // PRD §8.3 & F1.3: Push data lokal pending terlebih dahulu, baru pull dari server
+      try {
+        await SyncService.instance.pushPending(userId: user.id);
+        await SyncService.instance.pullAll(user.id);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal sync setelah register: $e');
+        }
+      }
+
+      // PRD §10.2: Genesis block dibuat saat register jika setelah pull masih belum ada
       try {
         await ledgerService?.ensureGenesisBlock(user.id);
-      } catch (_) {}
-
-      // PRD §8.3: Pull data setelah register berhasil
-      SyncService.instance.pullAll(user.id);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal ensureGenesisBlock setelah register: $e');
+        }
+      }
 
       return true;
     } catch (e) {
@@ -219,17 +316,71 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// Logout & bersihkan session — PRD §7.1 & §8.3.
-  Future<void> logout() async {
+  /// Logout & bersihkan session — PRD §7.1, §7.8, & §8.3.
+  Future<void> logout({bool skipSync = false, bool forceClearUserData = false}) async {
     _isLoading = true;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      // PRD §8.3: Sinkronkan pending changes sebelum logout
-      if (_currentUser != null) {
-        await SyncService.instance.syncBeforeLogout(_currentUser!.id);
+      // PRD §8.3: Sinkronkan pending changes sebelum logout jika belum di-sync
+      if (!skipSync && userId != null && userId.isNotEmpty) {
+        try {
+          await SyncService.instance.syncBeforeLogout(userId);
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AuthController] Gagal syncBeforeLogout: $e');
+          }
+        }
       }
-      await authRepository.logout();
+
+      // 1. logout_session di server (PRD §7.8)
+      try {
+        await authRepository.logout();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal logout remote: $e');
+        }
+      }
+
+      // 2. hapus sesi lokal
+      await sessionStore.clearSession();
+
+      // 3. Poin 3d: Cek apakah masih ada baris pending/error setelah push.
+      // Jika logout dipanggil tanpa dialog (skipSync: false) dan masih ada pending/error setelah push,
+      // lewati clearUserData agar data lokal tidak hilang (tetap terisolasi per user_id).
+      // Namun jika user sudah mengonfirmasi di dialog ProfilePage (skipSync: true / forceClearUserData: true),
+      // clearUserData tetap dijalankan sesuai PRD §7.8.
+      if (userId != null && userId.isNotEmpty) {
+        try {
+          final pendingOrError =
+              await SyncService.instance.refreshPendingCount(userId: userId);
+          final shouldSkipClear = !skipSync && !forceClearUserData && pendingOrError > 0;
+          if (shouldSkipClear) {
+            if (kDebugMode) {
+              debugPrint(
+                  '[AuthController] Lewati clearUserData untuk $userId karena masih ada $pendingOrError baris pending/error.');
+            }
+          } else {
+            await dbHelper.clearUserData(userId);
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AuthController] Gagal memeriksa status sync / clearUserData: $e');
+          }
+        }
+      }
+
+      // 4. batalkan notifikasi terjadwal dan stopwatch — PRD §7.8 & §10.5
+      try {
+        await NotificationService.instance.cancelDailyReadingReminder();
+        await NotificationService.instance.cancelStopwatchNotification();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthController] Gagal membatalkan notifikasi saat logout: $e');
+        }
+      }
     } finally {
       _currentUser = null;
       _isBiometricLocked = false;

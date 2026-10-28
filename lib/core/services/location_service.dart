@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -121,7 +122,11 @@ class LocationService {
       if (lastKnown != null) {
         return lastKnown;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[LocationService] getLastKnownPosition gagal: $e');
+      }
+    }
 
     try {
       // 2. Jika belum ada cache lokasi, minta posisi baru dengan batas waktu wajar
@@ -131,7 +136,10 @@ class LocationService {
           timeLimit: Duration(seconds: 5),
         ),
       );
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[LocationService] getCurrentPosition gagal: $e');
+      }
       return null;
     }
   }

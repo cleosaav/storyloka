@@ -580,3 +580,153 @@ Dokumen ini mencatat penyimpangan, klarifikasi, atau keputusan teknis yang diamb
 
 
 
+
+---
+
+## Fase F1 — Perbaikan Bug Fungsional
+
+### F1.1 Penanganan Sesi Offline vs SESSION_INVALID (PRD §7.1)
+
+1. **Retensi Sesi Lokal Saat Offline di SupabaseAuthRepository.validateSession()**
+   - **Masalah Sebelumnya:** Blok catch (e) menangkap seluruh galat (termasuk SocketException, ClientException, dan timeout) lalu memanggil sessionStore.clearSession(), sehingga membuka aplikasi saat offline memaksa pengguna login ulang secara keliru.
+   - **Keputusan:** Sesi lokal hanya dibersihkan jika server Supabase secara eksplisit mengembalikan galat SESSION_INVALID (PostgrestException). Untuk galat jaringan, socket terputus, atau timeout, sistem mempercayai sesi lokal dan mengembalikan profil pengguna tersimpan (sessionStore.getUser()) sesuai mandat PRD §7.1 ( Jika offline → percaya session lokal).
+   - **Perilaku di AuthController.checkSession():** Timeout 10 detik di Splash tidak menahan pengguna di layar error jika sesi lokal sudah ada di perangkat. Aplikasi langsung melanjutkan navigasi ke Home dengan sesi lokal, kemudian melakukan validasi ulang secara asinkron di latar belakang. Jika validasi latar belakang kemudian mengonfirmasi sesi tidak valid di server, logout paksa dilakukan dengan pesan *'Sesi Anda telah berakhir. Silakan masuk kembali.'*.
+
+2. **Diferensiasi Pesan Error Jaringan**
+   - **Keputusan:** Memisahkan pesan error untuk masalah ketiadaan koneksi internet umum dengan kegagalan TLS/Handshake.
+     - *Ketiadaan internet / Socket / Timeout:* *'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.'*
+     - *TLS / HandshakeException:* *'Koneksi aman gagal (TLS/HandshakeException). Periksa pengaturan Private DNS atau tanggal dan jam perangkat Anda.'*
+
+### F1.2 Persistensi Preferensi Tema di SharedPreferences (PRD §8.1 & §10.4)
+
+1. **Penyimpanan Tema Per Perangkat di SharedPreferences**
+   - **Masalah Sebelumnya:** `ThemeController` sebelumnya hanya menyimpan status `_themeMode` di memori dan selalu direset ke default `ThemeMode.light` setiap kali aplikasi ditutup atau dimulai ulang.
+   - **Keputusan:** Preferensi tema disimpan di `SharedPreferences` menggunakan key `'theme_mode'` dengan serialisasi `'light'`, `'dark'`, dan `'auto'`. Pengaturan ini bersifat per-perangkat (bukan per-akun di database remote) sehingga tidak pernah direset saat logout.
+   - **Pemuatan Startup Bebas Kedipan:** `ThemeController.create()` dipanggil di `main.dart` sebelum `runApp`, sehingga tema yang aktif sudah siap sejak frame pertama tanpa kedipan tema (*flash/flicker*).
+   - **Aktivasi Otomatis Sensor Cahaya pada Mode Auto:** Saat preferensi `'auto'` dimuat dari penyimpanan lokal, `ThemeController` secara otomatis mengaktifkan `LightSensorService.instance.startListening()` agar adaptasi pencahayaan sekitar langsung berjalan.
+
+### F1.3 Pencegahan Bentrok Genesis Block di Perangkat Baru (PRD §8.3 & §10.2)
+
+1. **Urutan Sinkronisasi Sebelum ensureGenesisBlock & Genesis Deterministik**
+   - **Masalah Sebelumnya:** `AuthController.login()`, `register()`, dan `checkSession()` memanggil `ensureGenesisBlock()` sebelum `SyncService.instance.pullAll()`. Di perangkat baru dibuat blok #0 lokal dengan ID dan timestamp acak baru, sehingga terjadi pelanggaran constraint `UNIQUE (user_id, block_index)` saat push, baris tertahan dalam status `pending`, dan rantai blockchain terancam bercabang.
+   - **Keputusan:**
+     (a) Pada `AuthController.login()`, `register()`, `checkSession()`, dan validasi latar belakang: jalankan `await SyncService.instance.pullAll(user.id)` terlebih dahulu sebelum `ensureGenesisBlock()`. Jika akun pengguna sudah memiliki blok #0 di server, blok tersebut masuk ke SQLite lokal dengan status `synced`, dan `ensureGenesisBlock()` langsung mengembalikan blok #0 yang sudah ada tanpa membuat blok baru.
+     (b) Pembuatan Genesis Block dijadikan deterministik 100%:
+         - ID genesis dihitung menggunakan UUID v5 berbasis `userId`: `_uuid.v5(Namespace.url.value, 'storyloka:genesis:$userId')`.
+         - Timestamp genesis konstan/tetap: `LedgerService.genesisTimestamp = DateTime.utc(2025, 1, 1, 0, 0, 0)`.
+         - Proof of Work (`mineBlock`) menghasilkan `nonce` dan `hash` yang identik di perangkat mana pun untuk `userId` yang sama.
+     (c) Pada `SyncService._pullLedgerBlocks()`: resolusi konflik lokal menggunakan `where: 'id = ? OR (user_id = ? AND block_index = ?)'` dan menandai baris yang cocok menjadi status `'synced'`, sehingga tidak ada baris pending yang tertahan akibat duplikasi genesis.
+   - **Integritas Rantai:** Verifikasi rantai (`LedgerService.verifyChain()`) tetap valid dan idempotensi penambahan buku (`appendFinishedBook`) tetap terjaga penuh.
+
+### F1.4 Pembersihan Data SQLite Saat Logout & Dialog Peringatan Pending (PRD §7.8)
+
+1. **Urutan Logout dan Pemisahan Tanggung Jawab UI vs Controller**
+   - **Keputusan:**
+     - `ProfilePage._confirmLogout()` bertanggung jawab mengelola alur interaksi pengguna:
+       (a) Menampilkan dialog konfirmasi awal (`AppDialog.showConfirm`).
+       (b) Menjalankan `syncBeforeLogout(userId)` dan mengecek `refreshPendingCount(userId)`.
+       (c) Jika terdapat baris pending (`pendingCount > 0`), menampilkan dialog peringatan: *"Ada data belum tersinkron, tetap logout?"*. Jika pengguna memilih Batal, proses dibatalkan tanpa perubahan sesi.
+       (d) Jika pengguna memilih Tetap Logout, `authController.logout(skipSync: true)` dipanggil dan navigasi diarahkan ke `/login`.
+     - `AuthController.logout({bool skipSync = false})` bertanggung jawab membersihkan state dan data:
+       (a) Memanggil `syncBeforeLogout(userId)` jika `!skipSync`.
+       (b) Memanggil `authRepository.logout()` (RPC `logout_session` di remote).
+       (c) Membersihkan sesi token dan user di `sessionStore.clearSession()`.
+       (d) Menghapus seluruh tabel lokal pengguna via `dbHelper.clearUserData(userId)` (`user_books`, `reading_sessions`, `ledger_blocks`, `feedbacks`, `game_scores`, dan `chat_messages`).
+       (e) Membatalkan notifikasi harian (`cancelDailyReadingReminder`) dan stopwatch (`cancelStopwatchNotification`).
+   - **Retensi Pengaturan Per Perangkat:** Pengaturan tema (`theme_mode`) dan preferensi jadwal membaca harian disimpan terpisah di `SharedPreferences` sehingga tetap utuh setelah logout dan tidak hilang saat pengguna login kembali.
+   - **Ketahanan Testing:** Menambahkan guard `FLUTTER_TEST` pada `NotificationService` serta constructor `@visibleForTesting DatabaseHelper.forTesting()` dan `SyncService.forTesting()` untuk memastikan pengujian widget UI dapat berjalan cepat dan terisolasi tanpa hambatan native method channel.
+
+### F1.5 Resolusi Konflik Sinkronisasi, Migrasi Relasi ID, & Pembatasan Retry (PRD §8.3)
+
+1. **Resolusi Konflik `user_books` Berbasis Last-Write-Wins (LWW) dengan Migrasi Foreign Key**
+   - **Masalah Sebelumnya:** Menambahkan buku yang sama (`google_books_id`) di dua perangkat saat offline menghasilkan ID lokal berbeda. Saat `_pushTable` melakukan `upsert(onConflict: 'id')`, server menolak dengan kode 23505 (pelanggaran batasan `UNIQUE(user_id, google_books_id)`). Akibatnya baris dibiarkan `pending` selamanya dan indikator tidak pernah bersih.
+   - **Keputusan:**
+     - Saat terjadi kode `23505` (atau galat `duplicate key` / `unique constraint`), `SyncService` memanggil `_resolveUserBookConflict()`.
+     - Mengambil baris remote terkait via `remoteSource.fetchRowByField('user_books', userId, 'google_books_id', googleBooksId)`.
+     - ID remote dipertahankan sebagai kanonikal.
+     - Jika data lokal lebih baru (`localUpdatedAt.isAfter(remoteUpdatedAt)`): data lokal di-push ke server menggunakan ID remote, tabel `reading_sessions` lokal yang merujuk ID lokal lama dialihkan (`UPDATE reading_sessions SET user_book_id = remoteId WHERE user_book_id = localId`), baris lama dihapus, dan baris lokal dengan ID remote disimpan dengan `sync_status = 'synced'`.
+     - Jika data remote lebih baru/sama: data remote disimpan ke SQLite lokal dengan `sync_status = 'synced'`, `reading_sessions` dialihkan ke ID remote, dan baris lama dibersihkan.
+     - Logika serupa diterapkan pada `_pullUserBooks()` untuk memeriksa kecocokan `(user_id, google_books_id)` saat ID berbeda.
+
+2. **Resolusi Konflik `ledger_blocks` Non-Destruktif**
+   - **Keputusan:** Blok ledger bersifat append-only dan tidak boleh menimpa blok remote. Jika terjadi bentrok indeks blok (`(user_id, block_index)`), blok lokal ditandai dengan status `sync_status = 'conflict'` dan dicatat di log tanpa loop selamanya, sehingga tidak lagi dihitung sebagai `pending`.
+
+### F1.6 Perbaikan Kecil Terkait & Audit Logika
+
+1. **Filter Pengguna Aktif pada `LocalLibraryRepository.getBookById`**
+   - **Keputusan:** Menambahkan klausul `AND user_id = ? AND is_deleted = 0` pada query `getBookById` di SQLite lokal.
+   - **Alasan:** Mencegah kebocoran data antar-pengguna jika terdapat riwayat cache lokal multi-pengguna di satu perangkat.
+
+2. **Perilaku `moveToCollection` Sesuai PRD §7.6 (Tanpa Mengubah Progres)**
+   - **Keputusan:** Mempertahankan implementasi `LocalLibraryRepository.moveToCollection` yang hanya memperbarui kolom `list_type = 'collection'` dan `updated_at`, tanpa mereset atau mengutak-atik progres baca (`status` dan `current_page`).
+   - **Klarifikasi:** Dokumentasi ringkasan checklist di `docs/PROGRESS.md` yang sebelumnya menyebut "dengan mereset status baca" telah dikoreksi menjadi "tanpa mereset progres membaca sesuai PRD §7.6".
+
+3. **Restorasi Buku Soft-Deleted yang Ditambahkan Kembali**
+   - **Keputusan:** Saat buku yang pernah dihapus lunak (`is_deleted = 1`) ditambahkan kembali oleh pengguna melalui `addBook`, record dipulihkan (`is_deleted = 0`). Jika buku belum memiliki progres nyata (`current_page == 0`), status diinisialisasi bersih ke `BookStatus.notStarted` dan `current_page = 0`. Namun jika ada progres atau status khusus yang sengaja disertakan pada objek buku baru yang diinput, nilai tersebut dihormati.
+   - **Alasan:** Menghindari buku yang baru ditambahkan kembali tiba-tiba berada dalam status yang tidak terduga, sekaligus tetap fleksibel jika ada sinkronisasi progres yang sah.
+
+4. **Unifikasi Pola Path Upload Avatar (CDN Cache-Busting)**
+   - **Keputusan:** Menyatukan implementasi upload avatar ke `SyncService.uploadAvatar(userId, bytes)` dengan pola file berversi timestamp: `avatar_${userId}_${timestamp}.jpg`. Menghapus implementasi path statis ganda `{userId}/avatar.jpg` di `SupabaseProfileRepository` dan mengalihkannya memanggil `SyncService`.
+   - **Alasan:** Menghindari masalah stale CDN cache pada avatar pengguna saat diperbarui, serta menghilangkan duplikasi kode.
+
+5. **Audit Blok Catch Kosong**
+   - **Keputusan:** Meninjau seluruh blok `catch (_) {}`. Blok yang menyembunyikan kegagalan operasional penting (sinkronisasi pull/push, penyimpanan skor game, fallback lookup ISBN Open Library, pembersihan DB, URL launcher telepon/web) ditambahkan `if (kDebugMode) debugPrint(...)` tanpa mencatat informasi sensitif. Blok fallback yang memang disengaja (seperti validasi parsing HttpDate/JSON parsial atau animasi antarmuka) tetap dipertahankan.
+
+---
+
+## Fase F5 — Keamanan, Kebersihan Proyek, dan Dokumentasi
+
+1. **Kesan & Pesan: Status Draf Read-Only & Kewajiban Input Asli Sebelum Pengumpulan**
+   - **Keputusan:** Mempertegas di `lib/data/static/team_feedback.dart` bahwa struktur data 3 anggota kelompok (Najmah Cleosa, Melanie Bunga Chintya Pawesty, Naftali Margareta) saat ini berstatus **draf template**. Komentar peringatan ditambahkan bahwa pemilik proyek wajib mengganti properti `impression` dan `suggestion` dengan tulisan tangan asli masing-masing anggota sebelum pengumpulan tugas akhir. Status fitur ini tidak dinyatakan final sebelum teks asli diisi.
+   - **Alasan:** Mencegah pengumpulan tugas akademik dengan teks buatan/karangan AI.
+
+2. **LLM Primer DeepSeek dengan Fallback Selektif Gemini (PRD §9.3 & Fase R4/S1)**
+   - **Keputusan:** Menetapkan DeepSeek Chat (`DEEPSEEK_API_KEY`) sebagai LLM primer berformat OpenAI-compatible, dengan fallback otomatis ke Google Gemini (`GEMINI_API_KEY`, `gemini-3.5-flash-lite` / `gemini-3.5-flash`) saat terjadi kehabisan saldo (HTTP 402), rate limit (HTTP 429), server overloaded (HTTP 5xx), atau timeout jaringan.
+   - **Alasan:** Menjamin ketersediaan teman baca AI yang cerdas, hemat biaya, dan memiliki cadangan berlapis saat salah satu penyedia mengalami gangguan.
+
+3. **Sensor Cahaya Native Platform Channel (Bukan Paket `light_sensor`)**
+   - **Keputusan:** Menggunakan `EventChannel("storyloka/light")` dan `MethodChannel("storyloka/light_status")` langsung di `MainActivity.kt` Android (`Sensor.TYPE_LIGHT`) dengan moving average 3 detik, hysteresis (<10 lux & >40 lux), dan jeda 5 detik.
+   - **Alasan:** Paket `light_sensor` dari pub.dev mengalami masalah kompilasi build Gradle dan repositori yang ditinggalkan (unmaintained). Implementasi native langsung menjamin performa tinggi, stabilitas, dan bebas dependensi eksternal usang.
+
+4. **Pengecualian Tabel `feedbacks` dari Sinkronisasi (PRD §8.3 & Fase S7)**
+   - **Keputusan:** Menghapus operasi sinkronisasi `feedbacks` dari `pushPending` dan `pullAll` di `SyncService`.
+   - **Alasan:** Evaluasi kesan dan pesan perkuliahan telah diubah menjadi baca saja dan tertera di kode statis tim, sehingga tidak lagi relevan disinkronkan ke tabel database Supabase.
+
+5. **Pencarian Buku Hibrida Google Books + Open Library (PRD §9.1 & §9.1b)**
+   - **Keputusan:** Mengimplementasikan `CompositeBookSearchRepository` yang memadukan pencarian katalog Google Books dengan fallback pengayaan sinopsis dan cover dari Open Library API.
+   - 6. **Peta Toko Buku Bawaan Terintegrasi (Gaya Leaflet via `flutter_map` & OSM)**
+   - **Keputusan:** Mengganti alur langsung membuka aplikasi eksternal menjadi peta interaktif bawaan di dalam aplikasi (`/maps/bookstores`) menggunakan `flutter_map`, OpenStreetMap tiles, Overpass API, dan dataset cadangan `IndonesianBookstoresSeed` (50+ toko buku ternama di Indonesia).
+   - **Alasan:** Pengguna dapat menjelajahi sebaran toko buku di sekitar mereka tanpa harus meninggalkan aplikasi StoryLoka, dengan tetap menyediakan opsi navigasi rute ke Google Maps jika diperlukan.
+
+7. **Penghapusan Izin Invasif Exact Alarm di Android Manifest (PRD §10.5)**
+   - **Keputusan:** Menghapus izin `SCHEDULE_EXACT_ALARM` dan `USE_EXACT_ALARM` dari `AndroidManifest.xml`.
+   - **Alasan:** PRD §10.5 secara eksplisit menetapkan penggunaan `AndroidScheduleMode.inexactAllowWhileIdle` untuk notifikasi harian membaca dan background clock. Menghapus izin exact alarm menghindari risiko penolakan kebijakan Google Play Store terkait restricted permissions sekaligus menjaga efisiensi konsumsi baterai perangkat pengguna.
+
+---
+
+## Perbaikan Bug Sinkronisasi UUID & Pertahanan Sinkronisasi Supabase
+
+1. **Pembuatan UUID v4 di Lapisan UI (`SearchBookDetailPage`)**
+   - **Keputusan:** Mengganti pembuatan ID yang sebelumnya memakai `DateTime.now().microsecondsSinceEpoch.toString()` dengan `const Uuid().v4()` saat menambahkan buku ke Collection maupun ke Wishlist.
+   - **Alasan:** Supabase Postgres memiliki tipe kolom `id UUID PRIMARY KEY`. String microseconds memicu exception PostgREST `22P02 (invalid input syntax for type uuid)` yang membuat baris berstatus `sync_status = 'error'`, menghambat sinkronisasi `reading_sessions`, dan menyebabkan data hilang setelah logout karena remote kosong.
+
+2. **Pertahanan Lapisan Repositori Lokal (`LocalLibraryRepository`, `LocalReadingRepository`, dll.)**
+   - **Keputusan:** Di `addBook`, `saveSession`, `saveBlock`, dan `saveScore`, jika ID yang diberikan kosong atau berupa angka murni (timestamp microseconds lama), repositori secara defensif membuat UUID v4 baru.
+   - **Alasan:** Menjamin integritas format ID sebelum disimpan ke SQLite lokal dan mencegah kegagalan sinkronisasi di masa mendatang.
+
+3. **Migrasi Database SQLite v2 ke v3 (`DatabaseHelper._migrateToV3`)**
+   - **Keputusan:** Memindai tabel `user_books` untuk entri dengan ID non-UUID. Jika buku belum pernah dirujuk dalam `ledger_blocks.data_json`, ID buku dan foreign key `reading_sessions.user_book_id` diperbarui secara in-place ke UUID v4 baru dan status diset ke `pending`. Jika sudah dirujuk dalam ledger, ID lama dipertahankan agar hash chain SHA-256 blockchain buku tidak rusak.
+   - **Alasan:** Memperbaiki data lokal lama pengguna yang terlanjur menggunakan ID microseconds agar dapat disinkronkan ke Supabase tanpa merusak rantai hash ledger.
+
+4. **Penanganan Baris 'error' dan Perhitungan Pending di `SyncService`**
+   - **Keputusan:** Menambahkan `resetErrorSyncStatus` untuk mengembalikan baris berstatus `'error'` menjadi `'pending'` saat startup, login, resume, dan sebelum push manual. `refreshPendingCount` kini menghitung kedua status (`pending` dan `error`).
+   - **Alasan:** Memastikan data yang sempat gagal sync (misalnya karena gangguan jaringan sementara atau bug sebelumnya) otomatis dicoba kembali saat aplikasi berjalan.
+
+5. **Pencegahan Penghapusan Data Lokal Saat Logout dengan Data Pending**
+   - **Keputusan:** Pada `AuthController.logout`, jika logout dipanggil tanpa dialog peringatan (atau saat data belum sempat terdorong ke remote) dan masih terdapat baris berstatus `pending` atau `error`, pemanggilan `clearUserData(userId)` dilewati sehingga data lokal tetap utuh dan terisolasi per `user_id`. Jika pengguna menyetujui peringatan konfirmasi logout di dialog `ProfilePage`, `clearUserData` dijalankan sesuai PRD §7.8.
+   - **Alasan:** Melindungi data pengguna dari kehilangan saat logout offline atau saat push gagal.
+
+
+
+
+

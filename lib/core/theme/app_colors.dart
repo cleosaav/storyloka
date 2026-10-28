@@ -27,7 +27,11 @@ class AppColors {
   static const Color inkDark = Color(0xFFF2EDE3);
   static const Color mutedDark = Color(0xFF8FA0A2);
   static const Color primaryDark = Color(0xFF2F7F8C);
-  static const Color trackDark = Color(0xFF2A3638);
+  static const Color trackDark = Color(0xFF243336);
+  static const Color amberWarm = Color(0xFFC07A15);
+  static const Color amberDark = Color(0xFF8A5300);
+  static const Color overlayDark = Color(0x8A000000); // Setara Black54
+  static const Color shadowSubtle = Color(0x1F000000); // Setara Black12
 
   // softApricot, sageGreen, error, success sama di dark mode.
 

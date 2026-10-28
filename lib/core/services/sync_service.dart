@@ -32,6 +32,18 @@ abstract class SyncRemoteSource {
     String? orderBy,
     bool ascending = true,
   });
+  Future<Map<String, dynamic>?> fetchRowByField(
+    String table,
+    String userId,
+    String field,
+    dynamic value,
+  ) async {
+    final rows = await fetchRows(table, userId);
+    for (final row in rows) {
+      if (row[field] == value) return row;
+    }
+    return null;
+  }
   Future<String?> uploadAvatar({required String userId, required File file});
 }
 
@@ -56,7 +68,11 @@ class SupabaseSyncRemoteSource implements SyncRemoteSource {
   @override
   Future<void> upsert(String table, Map<String, dynamic> data) async {
     final sb = _client;
-    if (sb == null) return;
+    if (sb == null) {
+      throw StateError(
+        'Supabase client tidak tersedia / belum dikonfigurasi saat upsert $table',
+      );
+    }
     await sb.from(table).upsert(data, onConflict: 'id');
   }
 
@@ -77,6 +93,28 @@ class SupabaseSyncRemoteSource implements SyncRemoteSource {
     }
     final rows = await query;
     return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchRowByField(
+    String table,
+    String userId,
+    String field,
+    dynamic value,
+  ) async {
+    final sb = _client;
+    if (sb == null) return null;
+    try {
+      final res = await sb
+          .from(table)
+          .select()
+          .eq('user_id', userId)
+          .eq(field, value)
+          .maybeSingle();
+      return res != null ? Map<String, dynamic>.from(res) : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -102,7 +140,8 @@ class SupabaseSyncRemoteSource implements SyncRemoteSource {
           );
 
       return sb.storage.from('avatars').getPublicUrl(storagePath);
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) debugPrint('[SyncService] uploadAvatar gagal: $e');
       return null;
     }
   }
@@ -129,6 +168,15 @@ class SyncService extends ChangeNotifier {
   String? _lastError;
   int _pendingCount = 0;
   SyncState _state = SyncState.synced;
+
+  @visibleForTesting
+  SyncService.forTesting({
+    DatabaseHelper? dbHelper,
+    SyncRemoteSource? remoteSource,
+    SecureSessionStore? sessionStore,
+  })  : dbHelper = dbHelper ?? DatabaseHelper.instance,
+        sessionStore = sessionStore ?? SecureSessionStore(),
+        remoteSource = remoteSource ?? SupabaseSyncRemoteSource();
 
   SyncService._internal({
     DatabaseHelper? dbHelper,
@@ -169,12 +217,53 @@ class SyncService extends ChangeNotifier {
   Future<void> _runSafePush() async {
     try {
       await pushPending();
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SyncService] _runSafePush gagal: $e');
+      }
       // Kegagalan jaringan ditelan dan dicoba lagi nanti — PRD §8.3
     }
   }
 
-  /// Menghitung jumlah baris yang berstatus 'pending' di SQLite lokal.
+  /// Mengembalikan baris dengan sync_status='error' menjadi 'pending'
+  /// agar dicoba kembali saat startup, login, resume, dan sync manual.
+  Future<void> resetErrorSyncStatus({String? userId}) async {
+    try {
+      final db = await dbHelper.database;
+      final targetUserId = userId ?? await _resolveCurrentUserId();
+
+      final tables = [
+        'user_books',
+        'reading_sessions',
+        'ledger_blocks',
+        'game_scores',
+      ];
+
+      for (final table in tables) {
+        if (targetUserId != null && targetUserId.isNotEmpty) {
+          await db.update(
+            table,
+            {'sync_status': 'pending'},
+            where: 'user_id = ? AND sync_status = ?',
+            whereArgs: [targetUserId, 'error'],
+          );
+        } else {
+          await db.update(
+            table,
+            {'sync_status': 'pending'},
+            where: 'sync_status = ?',
+            whereArgs: ['error'],
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SyncService] resetErrorSyncStatus gagal: $e');
+      }
+    }
+  }
+
+  /// Menghitung jumlah baris yang berstatus 'pending' atau 'error' di SQLite lokal.
   Future<int> refreshPendingCount({String? userId}) async {
     try {
       final db = await dbHelper.database;
@@ -191,12 +280,12 @@ class SyncService extends ChangeNotifier {
       for (final table in tables) {
         final res = targetUserId != null && targetUserId.isNotEmpty
             ? await db.rawQuery(
-                'SELECT COUNT(*) as c FROM $table WHERE user_id = ? AND sync_status = ?',
-                [targetUserId, 'pending'],
+                'SELECT COUNT(*) as c FROM $table WHERE user_id = ? AND sync_status IN (?, ?)',
+                [targetUserId, 'pending', 'error'],
               )
             : await db.rawQuery(
-                'SELECT COUNT(*) as c FROM $table WHERE sync_status = ?',
-                ['pending'],
+                'SELECT COUNT(*) as c FROM $table WHERE sync_status IN (?, ?)',
+                ['pending', 'error'],
               );
         count += (res.first['c'] as num?)?.toInt() ?? 0;
       }
@@ -205,7 +294,10 @@ class SyncService extends ChangeNotifier {
       _state = count > 0 ? SyncState.pending : SyncState.synced;
       notifyListeners();
       return count;
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SyncService] refreshPendingCount gagal: $e');
+      }
       return 0;
     }
   }
@@ -225,6 +317,9 @@ class SyncService extends ChangeNotifier {
       debugPrint('[SyncService] Skip push: userId bukan UUID valid ($targetUserId)');
       return;
     }
+
+    // Kembalikan baris 'error' menjadi 'pending' agar ikut dicoba kembali
+    await resetErrorSyncStatus(userId: targetUserId);
 
     _isSyncing = true;
     _state = SyncState.syncing;
@@ -274,7 +369,11 @@ class SyncService extends ChangeNotifier {
           if (rawData is String && rawData.isNotEmpty) {
             try {
               payload['data_json'] = jsonDecode(rawData);
-            } catch (_) {}
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('[SyncService] Gagal parse data_json ledger_blocks: $e');
+              }
+            }
           }
           return payload;
         },
@@ -302,6 +401,21 @@ class SyncService extends ChangeNotifier {
       _isSyncing = false;
       notifyListeners();
     }
+  }
+
+  final Map<String, int> _retryCounts = {};
+  static const int _maxRetries = 3;
+
+  void _recordRetry(String id) {
+    _retryCounts[id] = (_retryCounts[id] ?? 0) + 1;
+  }
+
+  bool _isUniqueViolation(Object error) {
+    if (error is PostgrestException && error.code == '23505') return true;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('23505') ||
+        msg.contains('unique constraint') ||
+        msg.contains('duplicate key');
   }
 
   /// Helper untuk push batch per tabel
@@ -334,12 +448,163 @@ class SyncService extends ChangeNotifier {
           where: 'id = ?',
           whereArgs: [id],
         );
+        _retryCounts.remove(id);
       } catch (e) {
-        // Tangani error upsert: catat log tanpa data sensitif / password (PRD §8.3 & S7)
-        if (kDebugMode) {
-          debugPrint('[SyncService] Gagal upsert tabel $tableName id $id: $e');
+        if (_isUniqueViolation(e) && tableName == 'user_books') {
+          await _resolveUserBookConflict(
+            db: db,
+            userId: userId,
+            localRow: row,
+            transform: transform,
+          );
+        } else if (_isUniqueViolation(e) && tableName == 'ledger_blocks') {
+          await _resolveLedgerBlockConflict(
+            db: db,
+            userId: userId,
+            localRow: row,
+          );
+        } else {
+          _recordRetry(id);
+          if ((_retryCounts[id] ?? 0) >= _maxRetries) {
+            await db.update(
+              tableName,
+              {'sync_status': 'error'},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+            debugPrint(
+                '[SyncService] Batas retry ($_maxRetries) tercapai untuk $tableName id $id');
+          }
+          if (kDebugMode) {
+            debugPrint('[SyncService] Gagal upsert tabel $tableName id $id: $e');
+          }
         }
-        // Baris dibiarkan tetap 'pending' agar dicoba kembali saat resume
+      }
+    }
+  }
+
+  Future<void> _resolveUserBookConflict({
+    required Database db,
+    required String userId,
+    required Map<String, dynamic> localRow,
+    required Map<String, dynamic> Function(Map<String, dynamic>) transform,
+  }) async {
+    final localId = localRow['id'] as String;
+    final googleBooksId = localRow['google_books_id'] as String?;
+    if (googleBooksId == null) return;
+
+    final remoteRow = await remoteSource.fetchRowByField(
+      'user_books',
+      userId,
+      'google_books_id',
+      googleBooksId,
+    );
+
+    if (remoteRow == null) return;
+    final remoteId = remoteRow['id'] as String;
+
+    final localUpdatedAtStr = localRow['updated_at'] as String?;
+    final remoteUpdatedAtStr = remoteRow['updated_at'] as String?;
+    final localUpdatedAt =
+        DateTime.tryParse(localUpdatedAtStr ?? '') ?? DateTime(1970);
+    final remoteUpdatedAt =
+        DateTime.tryParse(remoteUpdatedAtStr ?? '') ?? DateTime(1970);
+
+    if (localUpdatedAt.isAfter(remoteUpdatedAt)) {
+      // Local menang LWW: dorong pembaruan lokal ke remote menggunakan ID remote
+      final mergedPayload = transform(localRow);
+      mergedPayload['id'] = remoteId;
+      await remoteSource.upsert('user_books', mergedPayload);
+
+      // Di SQLite lokal:
+      // 1. Pindahkan reading_sessions yang merujuk localId ke remoteId
+      await db.update(
+        'reading_sessions',
+        {'user_book_id': remoteId},
+        where: 'user_book_id = ?',
+        whereArgs: [localId],
+      );
+      // 2. Hapus localId lama jika berbeda
+      if (localId != remoteId) {
+        await db.delete('user_books', where: 'id = ?', whereArgs: [localId]);
+      }
+      // 3. Simpan baris yang menang dengan remoteId & synced
+      final updatedLocal = Map<String, dynamic>.from(localRow);
+      updatedLocal['id'] = remoteId;
+      updatedLocal['sync_status'] = 'synced';
+      final isDeleted = updatedLocal['is_deleted'];
+      updatedLocal['is_deleted'] =
+          (isDeleted == 1 || isDeleted == true) ? 1 : 0;
+      await db.insert(
+        'user_books',
+        updatedLocal,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } else {
+      // Remote menang LWW:
+      // 1. Pindahkan reading_sessions yang merujuk localId ke remoteId
+      await db.update(
+        'reading_sessions',
+        {'user_book_id': remoteId},
+        where: 'user_book_id = ?',
+        whereArgs: [localId],
+      );
+      // 2. Hapus localId lama
+      if (localId != remoteId) {
+        await db.delete('user_books', where: 'id = ?', whereArgs: [localId]);
+      }
+      // 3. Simpan data remote ke lokal & synced
+      final remoteToLocal = Map<String, dynamic>.from(remoteRow);
+      remoteToLocal['sync_status'] = 'synced';
+      final isDeleted = remoteToLocal['is_deleted'];
+      remoteToLocal['is_deleted'] =
+          (isDeleted == 1 || isDeleted == true) ? 1 : 0;
+      await db.insert(
+        'user_books',
+        remoteToLocal,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    _retryCounts.remove(localId);
+  }
+
+  Future<void> _resolveLedgerBlockConflict({
+    required Database db,
+    required String userId,
+    required Map<String, dynamic> localRow,
+  }) async {
+    final localId = localRow['id'] as String;
+    final blockIndex = localRow['block_index'];
+
+    final remoteRow = await remoteSource.fetchRowByField(
+      'ledger_blocks',
+      userId,
+      'block_index',
+      blockIndex,
+    );
+
+    if (remoteRow != null) {
+      // Blok remote sudah ada, JANGAN menimpa blok remote.
+      // Tandai blok lokal 'conflict' dan catat agar tidak loop pending selamanya.
+      await db.update(
+        'ledger_blocks',
+        {'sync_status': 'conflict'},
+        where: 'id = ?',
+        whereArgs: [localId],
+      );
+      debugPrint(
+        '[SyncService] Konflik ledger_blocks block_index $blockIndex: remote sudah ada, ditandai conflict',
+      );
+      _retryCounts.remove(localId);
+    } else {
+      _recordRetry(localId);
+      if ((_retryCounts[localId] ?? 0) >= _maxRetries) {
+        await db.update(
+          'ledger_blocks',
+          {'sync_status': 'conflict'},
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
       }
     }
   }
@@ -408,6 +673,7 @@ class SyncService extends ChangeNotifier {
     for (final remote in remoteRows) {
       final remoteMap = Map<String, dynamic>.from(remote);
       final id = remoteMap['id'] as String;
+      final googleBooksId = remoteMap['google_books_id'] as String?;
 
       // Konversi format remote ke SQLite
       final isDeletedBool = remoteMap['is_deleted'];
@@ -415,12 +681,22 @@ class SyncService extends ChangeNotifier {
           (isDeletedBool == true || isDeletedBool == 1) ? 1 : 0;
       remoteMap['sync_status'] = 'synced';
 
-      final localList = await db.query(
+      var localList = await db.query(
         'user_books',
         where: 'id = ?',
         whereArgs: [id],
         limit: 1,
       );
+
+      // Jika belum ditemukan berdasarkan id, cari berdasarkan (user_id, google_books_id)
+      if (localList.isEmpty && googleBooksId != null) {
+        localList = await db.query(
+          'user_books',
+          where: 'user_id = ? AND google_books_id = ?',
+          whereArgs: [userId, googleBooksId],
+          limit: 1,
+        );
+      }
 
       if (localList.isEmpty) {
         // Belum ada di lokal -> sisipkan langsung
@@ -432,6 +708,7 @@ class SyncService extends ChangeNotifier {
       } else {
         // Sudah ada di lokal: bandingkan updated_at (Last-Write-Wins)
         final local = localList.first;
+        final localId = local['id'] as String;
         final localUpdatedAtStr = local['updated_at'] as String?;
         final remoteUpdatedAtStr = remoteMap['updated_at'] as String?;
 
@@ -440,16 +717,37 @@ class SyncService extends ChangeNotifier {
         final remoteUpdatedAt =
             DateTime.tryParse(remoteUpdatedAtStr ?? '') ?? DateTime(1970);
 
+        if (localId != id) {
+          // Ada konflik ID untuk buku yang sama (google_books_id sama)
+          // Pindahkan reading_sessions lokal ke id remote
+          await db.update(
+            'reading_sessions',
+            {'user_book_id': id},
+            where: 'user_book_id = ?',
+            whereArgs: [localId],
+          );
+          await db.delete('user_books', where: 'id = ?', whereArgs: [localId]);
+        }
+
         if (remoteUpdatedAt.isAfter(localUpdatedAt)) {
           // Remote lebih baru -> timpa data lokal
-          await db.update(
+          await db.insert(
             'user_books',
             remoteMap,
-            where: 'id = ?',
-            whereArgs: [id],
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } else if (localId != id) {
+          // Local lebih baru, tetapi ID lokal berbeda dari remote.
+          // Pertahankan data lokal dengan ID remote dan tandai 'pending' agar ter-push
+          final localMerged = Map<String, dynamic>.from(local);
+          localMerged['id'] = id;
+          localMerged['sync_status'] = 'pending';
+          await db.insert(
+            'user_books',
+            localMerged,
+            conflictAlgorithm: ConflictAlgorithm.replace,
           );
         }
-        // Jika localUpdatedAt >= remoteUpdatedAt, pertahankan data lokal
       }
     }
   }
@@ -467,25 +765,33 @@ class SyncService extends ChangeNotifier {
     for (final remote in remoteRows) {
       final remoteMap = Map<String, dynamic>.from(remote);
       final id = remoteMap['id'] as String;
+      final blockIndex = remoteMap['block_index'];
+
+      // SQLite menyimpan data_json sebagai string
+      if (remoteMap['data_json'] is! String) {
+        remoteMap['data_json'] = jsonEncode(remoteMap['data_json']);
+      }
+      remoteMap['sync_status'] = 'synced';
 
       final localList = await db.query(
         'ledger_blocks',
-        where: 'id = ?',
-        whereArgs: [id],
+        where: 'id = ? OR (user_id = ? AND block_index = ?)',
+        whereArgs: [id, userId, blockIndex],
         limit: 1,
       );
 
       if (localList.isEmpty) {
-        // SQLite menyimpan data_json sebagai string
-        if (remoteMap['data_json'] is! String) {
-          remoteMap['data_json'] = jsonEncode(remoteMap['data_json']);
-        }
-        remoteMap['sync_status'] = 'synced';
-
         await db.insert(
           'ledger_blocks',
           remoteMap,
           conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } else {
+        await db.update(
+          'ledger_blocks',
+          remoteMap,
+          where: 'id = ? OR (user_id = ? AND block_index = ?)',
+          whereArgs: [id, userId, blockIndex],
         );
       }
     }
@@ -537,7 +843,10 @@ class SyncService extends ChangeNotifier {
     if (userId.isEmpty || userId == 'demo_user') return;
     try {
       await pushPending(userId: userId).timeout(const Duration(seconds: 4));
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SyncService] syncBeforeLogout gagal: $e');
+      }
       // Abaikan kegagalan jaringan saat logout
     }
   }

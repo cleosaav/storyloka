@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -261,7 +262,9 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
           type: SnackBarType.warning,
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BookstoreMap] Gagal panggil $phone: $e');
+    }
   }
 
   Future<void> _openWebsite(String url) async {
@@ -279,7 +282,9 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
           type: SnackBarType.warning,
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BookstoreMap] Gagal buka website $url: $e');
+    }
   }
 
   void _openGoogleMapsFallback() {
@@ -324,7 +329,7 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
       appBar: AppBar(
         title: Text(
           'Toko Buku Terdekat',
-          style: AppText.pageHeading(
+          style: AppText.sectionHeading(
             color: isDark ? AppColors.inkDark : AppColors.ink,
           ),
         ),
@@ -415,12 +420,12 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
                             decoration: BoxDecoration(
                               color: context.primaryColor,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2.5),
-                              boxShadow: const [
+                              border: Border.all(color: AppColors.white, width: 2.5),
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black26,
+                                  color: AppColors.ink.withValues(alpha: 0.25),
                                   blurRadius: 4,
-                                  offset: Offset(0, 2),
+                                  offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
@@ -445,14 +450,14 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
                                 : AppColors.deepTeal,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white,
+                              color: AppColors.white,
                               width: _selectedStore?.id == store.id ? 3.0 : 1.5,
                             ),
-                            boxShadow: const [
+                            boxShadow: [
                               BoxShadow(
-                                color: Colors.black38,
+                                color: AppColors.ink.withValues(alpha: 0.35),
                                 blurRadius: 4,
-                                offset: Offset(0, 2),
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),
@@ -461,7 +466,7 @@ class _BookstoreMapPageState extends State<BookstoreMapPage> {
                             size: _selectedStore?.id == store.id ? 24 : 18,
                             color: _selectedStore?.id == store.id
                                 ? AppColors.ink
-                                : Colors.white,
+                                : AppColors.white,
                           ),
                         ),
                       ),
